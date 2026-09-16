@@ -208,20 +208,23 @@ object HvaEnvironment {
         hvaScript.setExecutable(true, false)
         hvaScript.setReadable(true, false)
 
-        // Install neofetch-hva utility
+        // Install fastfetch utility
+        val fastfetchScript = File(bin, "fastfetch")
+        fastfetchScript.writeText(
+            """
+            |#!/system/bin/sh
+            |exec hva fastfetch "${'$'}@"
+            """.trimMargin()
+        )
+        fastfetchScript.setExecutable(true, false)
+        fastfetchScript.setReadable(true, false)
+
+        // Install neofetch utility
         val neofetchScript = File(bin, "neofetch")
         neofetchScript.writeText(
             """
             |#!/system/bin/sh
-            |printf '\033[01;36m       __  ___     _____ \033[00m    \033[01;37muser@hva\033[00m\n'
-            |printf '\033[01;36m      / / / / |   / /   |\033[00m    --------\n'
-            |printf '\033[01;36m     / /_/ /| |  / / /| |\033[00m    \033[01;36mOS:\033[00m Android Bionic\n'
-            |printf '\033[01;36m    / __  / | | / / ___ |\033[00m    \033[01;36mHost:\033[00m HVA Virtual Terminal\n'
-            |printf '\033[01;36m   /_/ /_/  |___//_/  |_|\033[00m    \033[01;36mKernel:\033[00m '$(uname -r 2>/dev/null || echo 'Linux')'\n'
-            |printf '                         \033[01;36mUptime:\033[00m '$(uptime 2>/dev/null || echo 'active')'\n'
-            |printf '                         \033[01;36mShell:\033[00m '"${'$'}SHELL"'\n'
-            |printf '                         \033[01;36mTerminal:\033[00m '"${'$'}TERM"'\n'
-            |printf '                         \033[01;36mColors:\033[00m \033[40m  \033[41m  \033[42m  \033[43m  \033[44m  \033[45m  \033[46m  \033[47m  \033[0m\n'
+            |exec hva neofetch "${'$'}@"
             """.trimMargin()
         )
         neofetchScript.setExecutable(true, false)
