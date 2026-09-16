@@ -8,7 +8,7 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.MainActivity
-import com.example.R
+import com.example.hva.runtime.HvaEnvironment
 
 /**
  * Manages persistent and event notifications for active HVA Terminal sessions.
@@ -17,6 +17,7 @@ object HvaNotificationManager {
     const val CHANNEL_ID = "hva_terminal_sessions"
     const val CHANNEL_NAME = "Hva Terminal Sessions"
     const val NOTIFICATION_ID = 1001
+    const val ACTION_EXIT_APP = "com.example.hva.ACTION_EXIT_APP"
 
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -56,6 +57,18 @@ object HvaNotificationManager {
             PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
         )
 
+        val exitIntent = Intent(context, MainActivity::class.java).apply {
+            action = ACTION_EXIT_APP
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("EXIT_APP", true)
+        }
+        val exitPendingIntent = PendingIntent.getActivity(
+            context,
+            1,
+            exitIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+        )
+
         val subtitle = if (activePid > 0) {
             "$sessionCount session(s) active(s) • $activeSessionTitle (PID: $activePid)"
         } else {
@@ -66,7 +79,7 @@ object HvaNotificationManager {
             .setSmallIcon(android.R.drawable.ic_menu_agenda)
             .setContentTitle("Hva Terminal")
             .setContentText(subtitle)
-            .setSubText("v0.0.4")
+            .setSubText("v${HvaEnvironment.VERSION}")
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(pendingIntent)
@@ -75,6 +88,11 @@ object HvaNotificationManager {
                 android.R.drawable.ic_menu_view,
                 "Ouvrir",
                 pendingIntent
+            )
+            .addAction(
+                android.R.drawable.ic_menu_close_clear_cancel,
+                "Quitter",
+                exitPendingIntent
             )
             .build()
 

@@ -58,6 +58,8 @@ class HvaShellEngine(
     private var historyIndex = -1
     private var savedCurrentLine = ""
 
+    private var isSessionExited = false
+
     // Running process management
     private var activeProcess: Process? = null
     private var activeProcessIn: OutputStream? = null
@@ -124,6 +126,10 @@ class HvaShellEngine(
     }
 
     fun writeInput(bytes: ByteArray) {
+        if (isSessionExited) {
+            onSessionExit()
+            return
+        }
         if (isCommandRunning.get()) {
             writeInputToRunningProcess(bytes)
             return
@@ -236,8 +242,7 @@ class HvaShellEngine(
                 }
                 '\u0004' -> { // Ctrl+D
                     if (lineBuffer.isEmpty()) {
-                        writeToScreen("logout\r\n")
-                        onSessionExit()
+                        handleExitCommand()
                     }
                 }
                 '\u000C' -> { // Ctrl+L (Clear screen)
@@ -607,8 +612,7 @@ class HvaShellEngine(
 
         // 4. Built-in: exit / logout
         if (cmd == "exit" || cmd == "logout") {
-            writeToScreen("logout\r\n")
-            onSessionExit()
+            handleExitCommand()
             return true
         }
 
@@ -644,8 +648,8 @@ class HvaShellEngine(
 
         // 9. Built-in: pkg / apt / apt-get (update, upgrade, install, search, list, remove, show, help)
         if (cmd == "pkg" || cmd == "apt" || cmd == "apt-get") {
-            handlePkgCommand(parts.drop(1))
-            if (async) printPrompt()
+            val handledAsync = handlePkgCommand(parts.drop(1))
+            if (async && !handledAsync) printPrompt()
             return true
         }
 
@@ -769,6 +773,12 @@ class HvaShellEngine(
         } else {
             return runPosixProcess(fullCommand)
         }
+    }
+
+    private fun handleExitCommand() {
+        writeToScreen("logout\r\n\r\n[Process completed (code 1) - press Enter]\r\n")
+        isSessionExited = true
+        onStateChanged(ProcessState.EXITED, 1)
     }
 
     private fun handleAlias(args: List<String>) {
@@ -1054,14 +1064,16 @@ class HvaShellEngine(
     }
 
     private fun executeFastfetch() {
-        val osVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}) ${Build.SUPPORTED_ABIS.firstOrNull() ?: "aarch64"}"
-        val host = "${Build.MANUFACTURER.capitalize(Locale.ROOT)} ${Build.MODEL} (${Build.DEVICE.ifBlank { "android" }})"
-        val kernel = System.getProperty("os.version") ?: "5.15.0-android-bionic"
+        val arch = Build.SUPPORTED_ABIS.firstOrNull()?.replace("-v8a", "") ?: "arm64"
+        val osVersion = "Android ${Build.VERSION.RELEASE} ($arch)"
+        val host = "${Build.MANUFACTURER.capitalize(Locale.ROOT)} ${Build.MODEL}".take(24)
+        val rawKernel = System.getProperty("os.version") ?: "4.19.191"
+        val cleanKernel = rawKernel.split("-").firstOrNull() ?: rawKernel
         val uptimeHours = (SystemClock.elapsedRealtime() / (1000 * 60 * 60)).toInt()
         val uptimeMins = ((SystemClock.elapsedRealtime() / (1000 * 60)) % 60).toInt()
-        val uptimeStr = "$uptimeHours hours, $uptimeMins mins"
+        val uptimeStr = "${uptimeHours}h, ${uptimeMins}m"
         val installedCount = pkgManager.listInstalled().size
-        val resolution = "${emulator.screen.columns}x${emulator.screen.rows} (cols x rows)"
+        val resolution = "${emulator.screen.columns}x${emulator.screen.rows}"
 
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
         val mi = ActivityManager.MemoryInfo()
@@ -1077,59 +1089,61 @@ class HvaShellEngine(
         val batLevel = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: 95
 
         val cpuCores = Runtime.getRuntime().availableProcessors()
-        val cpuModel = "${Build.HARDWARE.capitalize(Locale.ROOT)} ($cpuCores Cores @ 2.80GHz)"
+        val cpuModel = "${Build.HARDWARE.capitalize(Locale.ROOT)} ($cpuCores Cores)".take(22)
+        val userHost = "user@${Build.DEVICE.ifBlank { "android" }}".take(26)
 
         val fast = buildString {
-            append("\u001b[01;32m       __  ___     _____ \u001b[00m    \u001b[01;32muser\u001b[00m@\u001b[01;32m${Build.DEVICE.ifBlank { "android" }}\u001b[00m\r\n")
-            append("\u001b[01;32m      / / / / |   / /   |\u001b[00m    \u001b[01;30m----------------------------------------\u001b[00m\r\n")
-            append("\u001b[01;32m     / /_/ /| |  / / /| |\u001b[00m    \u001b[01;36mOS:\u001b[00m $osVersion\r\n")
-            append("\u001b[01;32m    / __  / | | / / ___ |\u001b[00m    \u001b[01;36mHost:\u001b[00m $host\r\n")
-            append("\u001b[01;32m   /_/ /_/  |___//_/  |_|\u001b[00m    \u001b[01;36mKernel:\u001b[00m $kernel\r\n")
-            append("                             \u001b[01;36mUptime:\u001b[00m $uptimeStr\r\n")
-            append("                             \u001b[01;36mPackages:\u001b[00m $installedCount (pkg, bionic)\r\n")
-            append("                             \u001b[01;36mShell:\u001b[00m Hva Bionic Shell v${HvaEnvironment.VERSION}\r\n")
-            append("                             \u001b[01;36mDisplay:\u001b[00m $resolution\r\n")
-            append("                             \u001b[01;36mTerminal:\u001b[00m xterm-256color\r\n")
-            append("                             \u001b[01;36mCPU:\u001b[00m $cpuModel\r\n")
-            append("                             \u001b[01;36mGPU:\u001b[00m Vulkan 1.3 / OpenGL ES 3.2\r\n")
-            append("                             \u001b[01;36mMemory:\u001b[00m ${usedMemGb}GiB / ${totalMemGb}GiB ($memPct%)\r\n")
-            append("                             \u001b[01;36mDisk (/data):\u001b[00m ${freeStorageGb}GiB free / ${totalStorageGb}GiB\r\n")
-            append("                             \u001b[01;36mBattery:\u001b[00m $batLevel% [Active]\r\n")
-            append("                             \u001b[01;36mLocale:\u001b[00m en_US.UTF-8\r\n\r\n")
-            append("                             \u001b[40m   \u001b[41m   \u001b[42m   \u001b[43m   \u001b[44m   \u001b[45m   \u001b[46m   \u001b[47m   \u001b[0m\r\n")
-            append("                             \u001b[100m   \u001b[101m   \u001b[102m   \u001b[103m   \u001b[104m   \u001b[105m   \u001b[106m   \u001b[107m   \u001b[0m\r\n")
+            append("\u001b[01;32m  _  ___   ___   \u001b[00m \u001b[01;32m$userHost\u001b[00m\r\n")
+            append("\u001b[01;32m | |/ / | / / \\  \u001b[00m \u001b[01;30m--------------------------------\u001b[00m\r\n")
+            append("\u001b[01;32m | ' /| |/ / _ \\ \u001b[00m \u001b[01;36mOS:\u001b[00m $osVersion\r\n")
+            append("\u001b[01;32m |_|\\_\\|___/_/ \\_\\\u001b[00m \u001b[01;36mHost:\u001b[00m $host\r\n")
+            append("                  \u001b[01;36mKernel:\u001b[00m $cleanKernel\r\n")
+            append("                  \u001b[01;36mUptime:\u001b[00m $uptimeStr\r\n")
+            append("                  \u001b[01;36mPackages:\u001b[00m $installedCount (pkg, bionic)\r\n")
+            append("                  \u001b[01;36mShell:\u001b[00m Hva Bionic v${HvaEnvironment.VERSION}\r\n")
+            append("                  \u001b[01;36mDisplay:\u001b[00m $resolution\r\n")
+            append("                  \u001b[01;36mTerminal:\u001b[00m xterm-256color\r\n")
+            append("                  \u001b[01;36mCPU:\u001b[00m $cpuModel\r\n")
+            append("                  \u001b[01;36mGPU:\u001b[00m Vulkan 1.3 / ES 3.2\r\n")
+            append("                  \u001b[01;36mMemory:\u001b[00m ${usedMemGb}G / ${totalMemGb}G ($memPct%)\r\n")
+            append("                  \u001b[01;36mDisk:\u001b[00m ${freeStorageGb}G / ${totalStorageGb}G free\r\n")
+            append("                  \u001b[01;36mBattery:\u001b[00m $batLevel% [Active]\r\n\r\n")
+            append("                  \u001b[40m  \u001b[41m  \u001b[42m  \u001b[43m  \u001b[44m  \u001b[45m  \u001b[46m  \u001b[47m  \u001b[0m\r\n")
+            append("                  \u001b[100m  \u001b[101m  \u001b[102m  \u001b[103m  \u001b[104m  \u001b[105m  \u001b[106m  \u001b[107m  \u001b[0m\r\n")
         }
         writeToScreen(fast)
     }
 
     private fun executeNeofetch() {
-        val osVersion = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
-        val host = "${Build.MANUFACTURER.capitalize(Locale.ROOT)} ${Build.MODEL}"
-        val kernel = System.getProperty("os.version") ?: "Linux 5.x"
+        val arch = Build.SUPPORTED_ABIS.firstOrNull()?.replace("-v8a", "") ?: "arm64"
+        val osVersion = "Android ${Build.VERSION.RELEASE} ($arch)"
+        val host = "${Build.MANUFACTURER.capitalize(Locale.ROOT)} ${Build.MODEL}".take(24)
+        val rawKernel = System.getProperty("os.version") ?: "4.19.191"
+        val cleanKernel = rawKernel.split("-").firstOrNull() ?: rawKernel
         val uptimeHours = (SystemClock.elapsedRealtime() / (1000 * 60 * 60)).toInt()
         val uptimeMins = ((SystemClock.elapsedRealtime() / (1000 * 60)) % 60).toInt()
-        val uptimeStr = "$uptimeHours hours, $uptimeMins mins"
-        val arch = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
+        val uptimeStr = "${uptimeHours}h, ${uptimeMins}m"
         val installedCount = pkgManager.listInstalled().size
 
         val rt = Runtime.getRuntime()
         val usedMem = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
         val maxMem = rt.maxMemory() / (1024 * 1024)
+        val userHost = "user@${Build.DEVICE.ifBlank { "android" }}".take(26)
 
         val output = buildString {
-            append("\u001b[01;36m       __  ___     _____ \u001b[00m    \u001b[01;32muser@${Build.DEVICE.ifBlank { "android" }}\u001b[00m\r\n")
-            append("\u001b[01;36m      / / / / |   / /   |\u001b[00m    \u001b[01;30m-----------------------------\u001b[00m\r\n")
-            append("\u001b[01;36m     / /_/ /| |  / / /| |\u001b[00m    \u001b[01;36mOS:\u001b[00m $osVersion\r\n")
-            append("\u001b[01;36m    / __  / | | / / ___ |\u001b[00m    \u001b[01;36mHost:\u001b[00m $host\r\n")
-            append("\u001b[01;36m   /_/ /_/  |___//_/  |_|\u001b[00m    \u001b[01;36mKernel:\u001b[00m $kernel\r\n")
-            append("                             \u001b[01;36mUptime:\u001b[00m $uptimeStr\r\n")
-            append("                             \u001b[01;36mPackages:\u001b[00m $installedCount (pkg)\r\n")
-            append("                             \u001b[01;36mShell:\u001b[00m Hva Bionic Shell v${HvaEnvironment.VERSION}\r\n")
-            append("                             \u001b[01;36mTerminal:\u001b[00m xterm-256color\r\n")
-            append("                             \u001b[01;36mCPU Arch:\u001b[00m $arch\r\n")
-            append("                             \u001b[01;36mMemory:\u001b[00m ${usedMem}MB / ${maxMem}MB\r\n\r\n")
-            append("                             \u001b[40m   \u001b[41m   \u001b[42m   \u001b[43m   \u001b[44m   \u001b[45m   \u001b[46m   \u001b[47m   \u001b[0m\r\n")
-            append("                             \u001b[100m   \u001b[101m   \u001b[102m   \u001b[103m   \u001b[104m   \u001b[105m   \u001b[106m   \u001b[107m   \u001b[0m\r\n")
+            append("\u001b[01;36m  _  ___   ___   \u001b[00m \u001b[01;32m$userHost\u001b[00m\r\n")
+            append("\u001b[01;36m | |/ / | / / \\  \u001b[00m \u001b[01;30m--------------------------------\u001b[00m\r\n")
+            append("\u001b[01;36m | ' /| |/ / _ \\ \u001b[00m \u001b[01;36mOS:\u001b[00m $osVersion\r\n")
+            append("\u001b[01;36m |_|\\_\\|___/_/ \\_\\\u001b[00m \u001b[01;36mHost:\u001b[00m $host\r\n")
+            append("                  \u001b[01;36mKernel:\u001b[00m $cleanKernel\r\n")
+            append("                  \u001b[01;36mUptime:\u001b[00m $uptimeStr\r\n")
+            append("                  \u001b[01;36mPackages:\u001b[00m $installedCount (pkg)\r\n")
+            append("                  \u001b[01;36mShell:\u001b[00m Hva Bionic v${HvaEnvironment.VERSION}\r\n")
+            append("                  \u001b[01;36mTerminal:\u001b[00m xterm-256color\r\n")
+            append("                  \u001b[01;36mCPU Arch:\u001b[00m $arch\r\n")
+            append("                  \u001b[01;36mMemory:\u001b[00m ${usedMem}MB / ${maxMem}MB\r\n\r\n")
+            append("                  \u001b[40m  \u001b[41m  \u001b[42m  \u001b[43m  \u001b[44m  \u001b[45m  \u001b[46m  \u001b[47m  \u001b[0m\r\n")
+            append("                  \u001b[100m  \u001b[101m  \u001b[102m  \u001b[103m  \u001b[104m  \u001b[105m  \u001b[106m  \u001b[107m  \u001b[0m\r\n")
         }
         writeToScreen(output)
     }
@@ -1399,7 +1413,7 @@ class HvaShellEngine(
         }
     }
 
-    private fun handlePkgCommand(args: List<String>) {
+    private fun handlePkgCommand(args: List<String>): Boolean {
         val action = args.firstOrNull() ?: "help"
         when (action) {
             "update", "up", "sync" -> {
@@ -1418,6 +1432,7 @@ class HvaShellEngine(
                     }
                     printPrompt()
                 }
+                return true
             }
             "upgrade" -> {
                 writeToScreen("\u001b[01;34m[pkg]\u001b[00m Vérification des mises à niveau...\r\n")
@@ -1478,7 +1493,7 @@ class HvaShellEngine(
                 val targets = args.drop(1)
                 if (targets.isEmpty()) {
                     writeToScreen("Usage: pkg install <nom_paquet>\r\n")
-                    return
+                    return false
                 }
                 targets.forEach { target ->
                     writeToScreen("\u001b[01;34m[pkg]\u001b[00m Téléchargement et installation de '$target' depuis HVA Stack...\r\n")
@@ -1494,7 +1509,7 @@ class HvaShellEngine(
                 val target = args.getOrNull(1)
                 if (target.isNullOrBlank()) {
                     writeToScreen("Usage: pkg remove <nom_paquet>\r\n")
-                    return
+                    return false
                 }
                 val result = pkgManager.remove(target)
                 if (result.isSuccess) {
@@ -1507,7 +1522,7 @@ class HvaShellEngine(
                 val target = args.getOrNull(1)
                 if (target.isNullOrBlank()) {
                     writeToScreen("Usage: pkg show <nom_paquet>\r\n")
-                    return
+                    return false
                 }
                 val meta = pkgManager.getInfo(target)
                 if (meta != null) {
@@ -1532,6 +1547,7 @@ class HvaShellEngine(
                 writeToScreen("  pkg show <paquet>          Informations détaillées du paquet\r\n")
             }
         }
+        return false
     }
 
     private fun executeTree(targetPath: String?) {

@@ -8,7 +8,7 @@ import java.io.File
  * Sets up $HOME, $PREFIX, standard Bionic paths, and default scripts.
  */
 object HvaEnvironment {
-    const val VERSION = "0.0.7"
+    const val VERSION = "0.0.8"
 
     fun getHomeDir(context: Context): File {
         val dir = File(context.filesDir, "home")
@@ -80,8 +80,8 @@ object HvaEnvironment {
             |alias apt='hva pkg'
             |alias apt-get='hva pkg'
             |
-            |# Welcome banner (HVA Terminal v0.0.7)
-            |printf '\033[01;36mWelcome to Hva Terminal v0.0.7!\033[00m\n\n'
+            |# Welcome banner (HVA Terminal v0.0.8)
+            |printf '\033[01;36mWelcome to Hva Terminal v0.0.8!\033[00m\n\n'
             |printf 'Docs:       https://github.com/Djeyby-stack/Hva\n'
             |printf 'Community:  https://github.com/Djeyby-stack/Hva/issues\n\n'
             |printf 'Working with packages:\n\n'

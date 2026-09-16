@@ -30,15 +30,15 @@ class PackageManager(private val context: Context) {
     private val defaultCatalog = mutableMapOf(
         "coreutils" to PackageMeta(
             name = "coreutils",
-            version = "8.32",
-            description = "Essential UNIX core utilities (cat, head, tail, sort, uniq, wc, ls, mkdir, cp, mv, rm)",
+            version = "9.4",
+            description = "GNU core utilities (cat, head, tail, sort, uniq, wc, ls, mkdir, cp, mv, rm, chmod, touch)",
             sizeBytes = 14200,
             sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            files = listOf("bin/wc", "bin/head", "bin/tail", "bin/sort", "bin/uniq")
+            files = listOf("bin/wc", "bin/head", "bin/tail", "bin/sort", "bin/uniq", "bin/chmod", "bin/touch")
         ),
         "micro" to PackageMeta(
             name = "micro",
-            version = "2.0.12",
+            version = "2.0.13",
             description = "Modern terminal text editor with syntax highlighting and mouse support",
             sizeBytes = 48000,
             sha256 = "8f434346648f6b96df89dda901c5176b10f607629f760565c162fbf37427ac40",
@@ -53,9 +53,17 @@ class PackageManager(private val context: Context) {
             sha256 = "8f434346648f6b96df89dda901c5176b10f607629f760565c162fbf37427ac40",
             files = listOf("bin/nano")
         ),
+        "vim" to PackageMeta(
+            name = "vim",
+            version = "9.1.0",
+            description = "Vi IMproved - powerful text editor with advanced modal editing features",
+            sizeBytes = 84000,
+            sha256 = "8f434346648f6b96df89dda901c5176b10f607629f760565c162fbf37427ac40",
+            files = listOf("bin/vim", "bin/vi")
+        ),
         "tree" to PackageMeta(
             name = "tree",
-            version = "2.1.0",
+            version = "2.1.1",
             description = "Recursive directory listing tool with colorful visual tree hierarchy",
             sizeBytes = 9600,
             sha256 = "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
@@ -63,7 +71,7 @@ class PackageManager(private val context: Context) {
         ),
         "fastfetch" to PackageMeta(
             name = "fastfetch",
-            version = "2.8.0",
+            version = "2.21.0",
             description = "Ultra-fast CLI system information display tool",
             sizeBytes = 4200,
             sha256 = "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
@@ -79,19 +87,27 @@ class PackageManager(private val context: Context) {
         ),
         "curl" to PackageMeta(
             name = "curl",
-            version = "8.4.0",
+            version = "8.7.1",
             description = "Command line tool for transferring data with URLs (HTTP/HTTPS/FTP)",
             sizeBytes = 18900,
             sha256 = "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
-            files = listOf("bin/curl", "bin/wget")
+            files = listOf("bin/curl")
+        ),
+        "wget" to PackageMeta(
+            name = "wget",
+            version = "1.24.5",
+            description = "Non-interactive network downloader utility for HTTP, HTTPS and FTP",
+            sizeBytes = 22400,
+            sha256 = "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+            files = listOf("bin/wget")
         ),
         "python" to PackageMeta(
             name = "python",
-            version = "3.11.5",
+            version = "3.11.8",
             description = "High-level programming language and interactive CLI interpreter",
             sizeBytes = 125000,
             sha256 = "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e",
-            files = listOf("bin/python", "bin/python3")
+            files = listOf("bin/python", "bin/python3", "bin/pip")
         ),
         "busybox" to PackageMeta(
             name = "busybox",
@@ -103,7 +119,7 @@ class PackageManager(private val context: Context) {
         ),
         "htop" to PackageMeta(
             name = "htop",
-            version = "3.2.2",
+            version = "3.3.0",
             description = "Interactive process viewer and system resource monitor",
             sizeBytes = 85000,
             sha256 = "3f5747ada4eaa22f1d49c01e52ddb7875b4b6b86b273ff34fce19d6b804eff5a",
@@ -111,7 +127,7 @@ class PackageManager(private val context: Context) {
         ),
         "git" to PackageMeta(
             name = "git",
-            version = "2.42.0",
+            version = "2.44.0",
             description = "Fast, scalable, distributed revision control system",
             sizeBytes = 240000,
             sha256 = "72b9807785afee48bbca978112ca1bbdcafac231b39a23dc4da786eff8147c4e",
@@ -119,11 +135,115 @@ class PackageManager(private val context: Context) {
         ),
         "jq" to PackageMeta(
             name = "jq",
-            version = "1.7",
+            version = "1.7.1",
             description = "Command-line JSON processor and query filter",
             sizeBytes = 32000,
             sha256 = "8f434346648f6b96df89dda901c5176b10f607629f760565c162fbf37427ac40",
             files = listOf("bin/jq")
+        ),
+        "bash" to PackageMeta(
+            name = "bash",
+            version = "5.2.21",
+            description = "GNU Bourne-Again SHell - standard command language interpreter",
+            sizeBytes = 112000,
+            sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            files = listOf("bin/bash")
+        ),
+        "zsh" to PackageMeta(
+            name = "zsh",
+            version = "5.9",
+            description = "Advanced interactive Z Shell with tab completion and themes",
+            sizeBytes = 135000,
+            sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            files = listOf("bin/zsh")
+        ),
+        "tmux" to PackageMeta(
+            name = "tmux",
+            version = "3.4",
+            description = "Terminal multiplexer for managing multiple windows and sessions",
+            sizeBytes = 98000,
+            sha256 = "72b9807785afee48bbca978112ca1bbdcafac231b39a23dc4da786eff8147c4e",
+            files = listOf("bin/tmux")
+        ),
+        "openssh" to PackageMeta(
+            name = "openssh",
+            version = "9.7p1",
+            description = "Secure shell client and encryption tools (ssh, scp, sftp, ssh-keygen)",
+            sizeBytes = 180000,
+            sha256 = "72b9807785afee48bbca978112ca1bbdcafac231b39a23dc4da786eff8147c4e",
+            files = listOf("bin/ssh", "bin/scp", "bin/sftp", "bin/ssh-keygen")
+        ),
+        "clang" to PackageMeta(
+            name = "clang",
+            version = "18.1.0",
+            description = "C and C++ front-end compiler toolchain for LLVM",
+            sizeBytes = 3400000,
+            sha256 = "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e",
+            files = listOf("bin/clang", "bin/clang++", "bin/gcc")
+        ),
+        "nodejs" to PackageMeta(
+            name = "nodejs",
+            version = "20.12.0",
+            description = "JavaScript runtime environment built on V8 engine",
+            sizeBytes = 1850000,
+            sha256 = "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e",
+            files = listOf("bin/node", "bin/npm", "bin/npx")
+        ),
+        "ncurses" to PackageMeta(
+            name = "ncurses",
+            version = "6.4",
+            description = "Terminal screen handling and display utility library (infocmp, clear)",
+            sizeBytes = 28000,
+            sha256 = "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+            files = listOf("bin/infocmp", "bin/reset")
+        ),
+        "tar" to PackageMeta(
+            name = "tar",
+            version = "1.35",
+            description = "GNU tape archiving utility for bundling and extracting files",
+            sizeBytes = 35000,
+            sha256 = "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+            files = listOf("bin/tar")
+        ),
+        "gzip" to PackageMeta(
+            name = "gzip",
+            version = "1.13",
+            description = "Standard GNU file compression and decompression utility",
+            sizeBytes = 19000,
+            sha256 = "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+            files = listOf("bin/gzip", "bin/gunzip")
+        ),
+        "unzip" to PackageMeta(
+            name = "unzip",
+            version = "6.0",
+            description = "ZIP archive extraction tool",
+            sizeBytes = 16000,
+            sha256 = "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+            files = listOf("bin/unzip", "bin/zip")
+        ),
+        "grep" to PackageMeta(
+            name = "grep",
+            version = "3.11",
+            description = "GNU pattern matching search utility for text files",
+            sizeBytes = 24000,
+            sha256 = "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+            files = listOf("bin/grep", "bin/egrep", "bin/fgrep")
+        ),
+        "sed" to PackageMeta(
+            name = "sed",
+            version = "4.9",
+            description = "GNU stream editor for filtering and transforming text",
+            sizeBytes = 21000,
+            sha256 = "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+            files = listOf("bin/sed")
+        ),
+        "gawk" to PackageMeta(
+            name = "gawk",
+            version = "5.3.0",
+            description = "GNU AWK pattern scanning and processing language",
+            sizeBytes = 42000,
+            sha256 = "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+            files = listOf("bin/awk", "bin/gawk")
         )
     )
 

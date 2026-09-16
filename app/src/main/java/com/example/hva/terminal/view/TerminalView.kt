@@ -76,6 +76,24 @@ class TerminalView @JvmOverloads constructor(
     var scrollOffset = 0
         private set
 
+    private var scrollAccumulatorY = 0f
+    private val scroller = android.widget.OverScroller(context)
+    private val flingRunnable = object : Runnable {
+        override fun run() {
+            if (scroller.computeScrollOffset()) {
+                val maxScroll = session?.emulator?.screen?.getScrollbackSize() ?: 0
+                val newOffset = (scroller.currY / charHeight).toInt().coerceIn(0, maxScroll)
+                if (newOffset != scrollOffset) {
+                    scrollOffset = newOffset
+                    invalidate()
+                }
+                if (!scroller.isFinished) {
+                    postOnAnimation(this)
+                }
+            }
+        }
+    }
+
     // Selection
     private var isSelecting = false
     private var selStartRow = 0
@@ -94,12 +112,31 @@ class TerminalView @JvmOverloads constructor(
     private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
             if (isSelecting) return false
-            val deltaLines = (distanceY / charHeight).toInt()
+            scroller.forceFinished(true)
+            scrollAccumulatorY += distanceY
+            val deltaLines = (scrollAccumulatorY / charHeight).toInt()
             if (deltaLines != 0) {
                 val maxScroll = session?.emulator?.screen?.getScrollbackSize() ?: 0
-                scrollOffset = (scrollOffset + deltaLines).coerceIn(0, maxScroll)
-                invalidate()
+                val newOffset = (scrollOffset + deltaLines).coerceIn(0, maxScroll)
+                if (newOffset != scrollOffset) {
+                    scrollOffset = newOffset
+                    invalidate()
+                }
+                scrollAccumulatorY -= deltaLines * charHeight
             }
+            return true
+        }
+
+        override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+            if (isSelecting) return false
+            val maxScroll = session?.emulator?.screen?.getScrollbackSize() ?: 0
+            if (maxScroll <= 0) return false
+
+            val startY = (scrollOffset * charHeight).toInt()
+            val maxY = (maxScroll * charHeight).toInt()
+            scroller.forceFinished(true)
+            scroller.fling(0, startY, 0, -velocityY.toInt(), 0, 0, 0, maxY)
+            postOnAnimation(flingRunnable)
             return true
         }
 
@@ -380,6 +417,10 @@ class TerminalView @JvmOverloads constructor(
 
     // Touch & Key Input Handling
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.action == MotionEvent.ACTION_DOWN) {
+            scroller.forceFinished(true)
+            scrollAccumulatorY = 0f
+        }
         scaleDetector.onTouchEvent(event)
         gestureDetector.onTouchEvent(event)
 
