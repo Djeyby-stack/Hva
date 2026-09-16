@@ -6,7 +6,9 @@ on:
       - main
       - master
     tags:
-      - 'v*'
+      - '*'
+  release:
+    types: [published, created]
   pull_request:
     branches:
       - main
@@ -14,15 +16,15 @@ on:
   workflow_dispatch:
     inputs:
       create_release:
-        description: 'Create a GitHub Release with this APK'
+        description: 'Create or update a GitHub Release with this APK'
         required: false
         type: boolean
         default: true
       release_tag:
-        description: 'Release Tag (e.g., v1.0.0)'
+        description: 'Release Tag (e.g., Hva, v1.0.0, latest)'
         required: false
         type: string
-        default: 'v1.0.0'
+        default: 'latest'
 
 permissions:
   contents: write
@@ -93,32 +95,38 @@ jobs:
             exit 1
           fi
 
-      - name: Upload APK Artifact
+      - name: Upload APK Artifact (Downloadable in Actions Tab)
         uses: actions/upload-artifact@v4
         with:
           name: Hva-Debug-APK
           path: build-artifacts/*.apk
           retention-days: 30
 
-      - name: Determine Release Eligibility
+      - name: Determine Release Target
         id: release_check
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "is_release=true" >> $GITHUB_OUTPUT
+            echo "tag_name=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
             echo "is_release=true" >> $GITHUB_OUTPUT
             echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.create_release }}" == "true" ]]; then
             echo "is_release=true" >> $GITHUB_OUTPUT
             echo "tag_name=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/master" ]]; then
+            echo "is_release=true" >> $GITHUB_OUTPUT
+            echo "tag_name=latest" >> $GITHUB_OUTPUT
           else
             echo "is_release=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create GitHub Release and Upload APK
+      - name: Attach APK to GitHub Release
         if: steps.release_check.outputs.is_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_check.outputs.tag_name }}
-          name: "Release ${{ steps.release_check.outputs.tag_name }}"
+          name: "Hva Release ${{ steps.release_check.outputs.tag_name }}"
           draft: false
           prerelease: false
           generate_release_notes: true
