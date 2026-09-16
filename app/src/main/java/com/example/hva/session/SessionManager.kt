@@ -3,6 +3,7 @@ package com.example.hva.session
 import android.content.Context
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import com.example.hva.notification.HvaNotificationManager
 import com.example.hva.runtime.HvaEnvironment
 
 /**
@@ -28,14 +29,22 @@ class SessionManager(private val context: Context) {
         val homeDir = HvaEnvironment.getHomeDir(context)
 
         val session = TerminalSession(
+            context = context,
             title = title,
             shellPath = "/system/bin/sh",
             cwd = homeDir,
             environment = env
         )
+        session.onCloseRequested = { s ->
+            val idx = sessions.indexOf(s)
+            if (idx >= 0) {
+                closeSession(idx)
+            }
+        }
         sessions.add(session)
         activeIndex.intValue = sessions.size - 1
         session.start()
+        updateNotification()
         return session
     }
 
@@ -49,19 +58,32 @@ class SessionManager(private val context: Context) {
             } else {
                 activeIndex.intValue = activeIndex.intValue.coerceIn(0, sessions.size - 1)
             }
+            updateNotification()
         }
     }
 
     fun selectSession(index: Int) {
         if (index in sessions.indices) {
             activeIndex.intValue = index
+            updateNotification()
         }
     }
 
     fun renameSession(index: Int, newName: String) {
         if (index in sessions.indices && newName.isNotBlank()) {
             sessions[index].title = newName
+            updateNotification()
         }
+    }
+
+    fun updateNotification() {
+        val current = activeSession
+        HvaNotificationManager.updateSessionNotification(
+            context = context,
+            sessionCount = sessions.size,
+            activeSessionTitle = current?.title ?: "sh",
+            activePid = current?.pid ?: -1
+        )
     }
 
     fun closeAll() {
@@ -69,5 +91,6 @@ class SessionManager(private val context: Context) {
             s.close()
         }
         sessions.clear()
+        HvaNotificationManager.cancelNotification(context)
     }
 }

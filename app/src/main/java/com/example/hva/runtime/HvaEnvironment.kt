@@ -8,7 +8,7 @@ import java.io.File
  * Sets up $HOME, $PREFIX, standard Bionic paths, and default scripts.
  */
 object HvaEnvironment {
-    const val VERSION = "1.0.0"
+    const val VERSION = "0.0.4"
 
     fun getHomeDir(context: Context): File {
         val dir = File(context.filesDir, "home")

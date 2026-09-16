@@ -345,10 +345,10 @@ class TerminalView @JvmOverloads constructor(
     override fun onCheckIsTextEditor(): Boolean = true
 
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
-        outAttrs.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        outAttrs.inputType = InputType.TYPE_NULL
         outAttrs.imeOptions = EditorInfo.IME_ACTION_NONE or EditorInfo.IME_FLAG_NO_FULLSCREEN
 
-        return object : BaseInputConnection(this, true) {
+        return object : BaseInputConnection(this, false) {
             override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
                 if (!text.isNullOrEmpty()) {
                     val s = session ?: return true
@@ -368,16 +368,35 @@ class TerminalView @JvmOverloads constructor(
                 return true
             }
 
+            override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
+                return commitText(text, newCursorPosition)
+            }
+
+            override fun finishComposingText(): Boolean {
+                return true
+            }
+
+            override fun performEditorAction(actionCode: Int): Boolean {
+                val s = session ?: return true
+                s.write(byteArrayOf('\r'.code.toByte()))
+                scrollOffset = 0
+                return true
+            }
+
             override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
                 val s = session ?: return true
                 for (i in 0 until beforeLength) {
                     s.write(byteArrayOf(0x7F)) // DEL
                 }
+                scrollOffset = 0
                 return true
             }
 
             override fun sendKeyEvent(event: KeyEvent): Boolean {
-                return dispatchKeyEvent(event)
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    return onKeyDown(event.keyCode, event)
+                }
+                return super.sendKeyEvent(event)
             }
         }
     }
@@ -417,8 +436,18 @@ class TerminalView @JvmOverloads constructor(
         imm?.toggleSoftInput(InputMethodManager.SHOW_FORCED, 0)
     }
 
-    fun copySelection() {
-        if (!isSelecting) return
+    fun selectAll() {
+        val s = session ?: return
+        isSelecting = true
+        selStartRow = 0
+        selStartCol = 0
+        selEndRow = s.emulator.screen.rows - 1
+        selEndCol = s.emulator.screen.columns - 1
+        invalidate()
+    }
+
+    fun copySelection(): String? {
+        if (!isSelecting) return null
         val text = session?.emulator?.screen?.getSelectedText(
             selStartRow, selStartCol,
             selEndRow, selEndCol,
@@ -430,14 +459,19 @@ class TerminalView @JvmOverloads constructor(
         }
         isSelecting = false
         invalidate()
+        return text
     }
 
-    fun pasteClipboard() {
+    fun pasteClipboard(): Boolean {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-        val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString() ?: return
-        val bracketed = session?.emulator?.screen?.bracketedPasteMode == true
-        session?.write(KeyMapper.formatPaste(clip, bracketed))
-        scrollOffset = 0
+        val clip = cm?.primaryClip?.getItemAt(0)?.text?.toString()
+        if (!clip.isNullOrEmpty()) {
+            val bracketed = session?.emulator?.screen?.bracketedPasteMode == true
+            session?.write(KeyMapper.formatPaste(clip, bracketed))
+            scrollOffset = 0
+            return true
+        }
+        return false
     }
 
     fun sendCtrl(ch: Char) {

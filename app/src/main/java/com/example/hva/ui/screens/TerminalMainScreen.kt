@@ -1,6 +1,11 @@
 package com.example.hva.ui.screens
 
+import android.Manifest
 import android.content.Context
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -27,6 +32,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
@@ -41,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,6 +90,23 @@ fun TerminalMainScreen(
     var terminalViewRef by remember { mutableStateOf<TerminalView?>(null) }
     var ctrlLatched by remember { mutableStateOf(false) }
     var altLatched by remember { mutableStateOf(false) }
+
+    // Request POST_NOTIFICATIONS permission on Android 13+ (API 33+)
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            sessionManager.updateNotification()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            sessionManager.updateNotification()
+        }
+    }
 
     when (currentScreen) {
         CurrentScreen.SETTINGS -> {
@@ -130,6 +154,23 @@ fun TerminalMainScreen(
                                 scope.launch { drawerState.close() }
                                 sessionManager.activeSession?.emulator?.reset()
                                 terminalViewRef?.invalidate()
+                            },
+                            onCopyAll = {
+                                scope.launch { drawerState.close() }
+                                terminalViewRef?.selectAll()
+                                val copied = terminalViewRef?.copySelection()
+                                if (!copied.isNullOrEmpty()) {
+                                    Toast.makeText(context, "Tout le terminal a été copié", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onPaste = {
+                                scope.launch { drawerState.close() }
+                                val pasted = terminalViewRef?.pasteClipboard() ?: false
+                                if (pasted) {
+                                    Toast.makeText(context, "Texte collé", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Presse-papier vide", Toast.LENGTH_SHORT).show()
+                                }
                             }
                         )
                     }
@@ -210,7 +251,9 @@ private fun TermuxDrawerContent(
     onOpenSettings: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onClearScreen: () -> Unit,
-    onResetTerminal: () -> Unit
+    onResetTerminal: () -> Unit,
+    onCopyAll: () -> Unit,
+    onPaste: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -304,7 +347,6 @@ private fun TermuxDrawerContent(
             itemsIndexed(sessionManager.sessions) { index, session ->
                 val isActive = index == sessionManager.activeIndex.intValue
                 val bg = if (isActive) Color(0xFF2A2A2A) else Color.Transparent
-                val border = if (isActive) Color(0xFF444444) else Color.Transparent
 
                 Row(
                     modifier = Modifier
@@ -364,6 +406,11 @@ private fun TermuxDrawerContent(
             icon = Icons.Default.Refresh,
             label = "Reset Terminal",
             onClick = onResetTerminal
+        )
+        DrawerActionRow(
+            icon = Icons.Default.Notifications,
+            label = "Copier tout le terminal",
+            onClick = onCopyAll
         )
         DrawerActionRow(
             icon = Icons.Default.Info,

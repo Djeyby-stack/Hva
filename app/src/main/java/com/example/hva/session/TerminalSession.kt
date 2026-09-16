@@ -1,16 +1,17 @@
 package com.example.hva.session
 
+import android.content.Context
 import com.example.hva.process.ProcessState
-import com.example.hva.process.TerminalProcess
 import com.example.hva.terminal.TerminalEmulator
 import java.io.File
 import java.util.UUID
 
 /**
- * Encapsulates an active terminal session, coupling a POSIX child process
+ * Encapsulates an active terminal session, coupling an interactive shell engine
  * with a VT/ANSI terminal emulator and screen state.
  */
 class TerminalSession(
+    private val context: Context,
     val id: String = UUID.randomUUID().toString().substring(0, 8),
     var title: String = "sh",
     var shellPath: String = "/system/bin/sh",
@@ -21,18 +22,19 @@ class TerminalSession(
 ) {
     val emulator = TerminalEmulator()
 
-    var process: TerminalProcess? = null
+    var shellEngine: HvaShellEngine? = null
         private set
 
     var onStateChanged: ((TerminalSession, ProcessState, Int?) -> Unit)? = null
     var onTitleChanged: ((TerminalSession, String) -> Unit)? = null
     var onBell: ((TerminalSession) -> Unit)? = null
+    var onCloseRequested: ((TerminalSession) -> Unit)? = null
 
     val isRunning: Boolean
-        get() = process?.state == ProcessState.RUNNING
+        get() = true
 
     val pid: Int
-        get() = process?.pid ?: -1
+        get() = shellEngine?.currentPid ?: -1
 
     init {
         emulator.screen.resize(initialCols, initialRows)
@@ -48,25 +50,24 @@ class TerminalSession(
     }
 
     fun start() {
-        val proc = TerminalProcess(
-            shell = shellPath,
+        val engine = HvaShellEngine(
+            context = context,
+            emulator = emulator,
             cwd = cwd,
             environment = environment,
-            columns = emulator.screen.columns,
-            rows = emulator.screen.rows,
-            onDataRead = { bytes, offset, length ->
-                emulator.appendBytes(bytes, offset, length)
+            onSessionExit = {
+                onCloseRequested?.invoke(this)
             },
             onStateChanged = { state, exitCode ->
                 onStateChanged?.invoke(this, state, exitCode)
             }
         )
-        process = proc
-        proc.start()
+        shellEngine = engine
+        engine.start()
     }
 
     fun write(bytes: ByteArray) {
-        process?.write(bytes)
+        shellEngine?.writeInput(bytes)
     }
 
     fun writeText(text: String) {
@@ -74,15 +75,15 @@ class TerminalSession(
     }
 
     fun sendSignal(signal: Int) {
-        process?.sendSignal(signal)
+        shellEngine?.sendSignal(signal)
     }
 
     fun resize(cols: Int, rows: Int) {
         emulator.resize(cols, rows)
-        process?.resize(cols, rows)
     }
 
     fun close() {
-        process?.close()
+        shellEngine?.close()
     }
 }
+
