@@ -6,21 +6,21 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 
 private val DarkColorScheme = darkColorScheme(
-    primary = TermuxWhite,
-    secondary = TermuxGreen,
-    tertiary = TermuxAccent,
-    background = TermuxBlack,
-    surface = TermuxSurface,
-    surfaceVariant = TermuxSurfaceVariant,
-    onPrimary = TermuxBlack,
-    onSecondary = TermuxBlack,
-    onBackground = TermuxWhite,
-    onSurface = TermuxWhite,
-    outline = TermuxBorder
+    primary = HvaWhite,
+    secondary = HvaGreen,
+    tertiary = HvaAccent,
+    background = HvaBlack,
+    surface = HvaSurface,
+    surfaceVariant = HvaSurfaceVariant,
+    onPrimary = HvaBlack,
+    onSecondary = HvaBlack,
+    onBackground = HvaWhite,
+    onSurface = HvaWhite,
+    outline = HvaBorder
 )
 
 @Composable
-fun MyApplicationTheme(
+fun HvaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
 ) {
@@ -30,3 +30,9 @@ fun MyApplicationTheme(
         content = content
     )
 }
+
+@Composable
+fun MyApplicationTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
+) = HvaTheme(darkTheme = darkTheme, content = content)

@@ -10,7 +10,7 @@ import com.example.hva.runtime.HvaEnvironment
 import com.example.hva.session.SessionManager
 import com.example.hva.settings.HvaPreferences
 import com.example.hva.ui.screens.TerminalMainScreen
-import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.HvaTheme
 import kotlin.system.exitProcess
 
 class MainActivity : ComponentActivity() {
@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
 
         // 3. Mount UI
         setContent {
-            MyApplicationTheme {
+            HvaTheme {
                 TerminalMainScreen(
                     sessionManager = sessionManager,
                     preferences = preferences
