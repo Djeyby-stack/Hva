@@ -44,13 +44,15 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Accept Android SDK Licenses & Set Environment
+      - name: Set up Android SDK & Accept Licenses
         run: |
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           mkdir -p ~/.android
           touch ~/.android/repositories.cfg
           if [ -d "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" ]; then
-            yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+            export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+            yes | sdkmanager --licenses || true
+            sdkmanager "platforms;android-36" "build-tools;36.0.0" || true
           fi
 
       - name: Set up Gradle 9.3.1
@@ -58,18 +60,25 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
-      - name: Prepare Keystore & Environment
+      - name: Prepare Keystore & Environment Files
         run: |
+          mkdir -p ~/.android
           if [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > ~/.android/debug.keystore || true
+            base64 -d debug.keystore.base64 > debug.keystore
+            base64 -d debug.keystore.base64 > ~/.android/debug.keystore
+          else
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            cp debug.keystore ~/.android/debug.keystore
           fi
           if [ -f .env.example ] && [ ! -f .env ]; then
-            cp .env.example .env || true
+            cp .env.example .env
+          else
+            touch .env
           fi
 
       - name: Build Debug APK
         run: |
-          gradle assembleDebug --stacktrace --no-daemon
+          gradle assembleDebug --stacktrace --no-daemon --no-configuration-cache
 
       - name: Locate & Prepare APK
         run: |
