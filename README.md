@@ -1,17 +1,20 @@
-# Hva — Terminal Android Moderne & Autonome (v0.0.4)
+# Hva — Terminal Android Moderne & Autonome (v0.0.6)
 
 [![Build & Release Android Debug APK](https://github.com/Djeyby-stack/Hva/actions/workflows/build-and-release-apk.yml/badge.svg)](https://github.com/Djeyby-stack/Hva/actions/workflows/build-and-release-apk.yml)
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84.svg?logo=android&logoColor=white)](https://android.com)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4.svg?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-7F52FF.svg?logo=kotlin&logoColor=white)](https://kotlinlang.org)
-[![Version](https://img.shields.io/badge/Version-0.0.4-blue.svg)](https://github.com/Djeyby-stack/Hva/releases)
+[![Version](https://img.shields.io/badge/Version-0.0.6-blue.svg)](https://github.com/Djeyby-stack/Hva/releases)
 
 **Hva** est un émulateur de terminal Android autonome, rapide et moderne conçu avec **Jetpack Compose** et **Kotlin Coroutines**. Il fournit un environnement UNIX complet (Bionic / BusyBox) sans nécessiter de root, un moteur de saisie interactive avec historique et autocomplétion, une barre de touches rapides multi-pages, des notifications persistantes de session et le support complet du copier/coller.
 
 ---
 
-## 🌟 Nouveautés de la Version 0.0.4
+## 🌟 Nouveautés & Stabilité de la Version 0.0.6
 
+- 🚀 **Stabilité Rendu & Performance Temps Réel** :
+  - Pipeline de rendu d'écran optimisé pour éliminer la latence de frappe.
+  - Compatibilité renforcée avec les wrappers d'exécution de code CLI (scripts Python, Node.js, Shell et OpenCode CLI).
 - ⚡ **Moteur de saisie interactif (`HvaShellEngine`)** :
   - Écho instantané des caractères tapés à l'écran en temps réel sans latence.
   - Gestion native des touches Retour arrière (`Backspace`/`DEL`), suppression avant (`Suppr`), et flèches de curseur (`←` / `→`).
@@ -30,6 +33,10 @@
   - `fastfetch` : Spécifications complètes ultra-rapides (CPU, GPU, RAM, Stockage, Batterie, Uptime, Palette ANSI).
   - `neofetch` : Affichage instantané des spécifications système avec logo ASCII coloré.
   - `hva doctor` : Diagnostic complet de l'OS Android, mémoire RAM, stockage, noyau Linux et permissions.
+  - `ping <hôte>` : Test de latence réseau réel (socket/ICMP) avec RTT min/avg/max et perte de paquets.
+  - `ifconfig` / `ip` : Détection automatique des interfaces réseau Android (`wlan0`, `rmnet`, `lo`), adresses IPv4/IPv6, MTU et adresses MAC.
+  - `alias [nom='cmd']` & `unalias` : Gestionnaire d'alias personnalisés en mémoire.
+  - `export VAR=val` & `env` / `printenv` : Variables d'environnement persistantes avec interpolation `$VAR`.
   - `htop` / `top` : Moniteur de processus et utilisation CPU/RAM.
   - `cmatrix` : Animation Matrix cybernétique verte.
   - `cowsay <texte>` & `fortune` : Générateur de citations et d'art ASCII UNIX.
@@ -38,29 +45,36 @@
   - `tree` : Affichage récursif coloré de l'arborescence des dossiers et fichiers.
   - `curl` & `wget` : Téléchargement et inspection de flux HTTP/HTTPS directs.
   - `python` / `python3` : Interpréteur et calculateur d'expressions (`python -c "2+2"`).
+- ⌨️ **Raccourcis Readline & Édition Avancée** :
+  - `Ctrl + A` / `HOME` : Début de ligne
+  - `Ctrl + E` / `END` : Fin de ligne
+  - `Ctrl + K` : Effacer du curseur jusqu'à la fin de la ligne
+  - `Ctrl + U` : Effacer du début de ligne jusqu'au curseur
+  - `Ctrl + W` : Supprimer le mot précédent
+  - `Ctrl + L` : Effacer l'écran sans perdre la commande en cours
+  - `Ctrl + C` : Interruption propre du processus
+  - `Ctrl + Z` : Suspension de tâche
+- 📋 **Support Copier / Coller & Sélection Tactile Haute Précision** :
+  - **Double-Tap** sur n'importe quel mot pour le sélectionner instantanément.
+  - **Appui long + Glissement (Drag)** pour sélectionner une zone de texte avec retour haptique.
+  - Touches dédiées **`COPY`**, **`PASTE`**, **`SEL`** dans la barre de touches rapides.
+  - Rendu haute précision avec sous-pixel et lissage vectoriel (`HINTING_ON`).
 - 🔔 **Système de Notification en arrière-plan (`HvaNotificationManager`)** :
   - Notification persistante dans la barre d'état Android indiquant le nombre de sessions actives, le titre de la console et le PID en cours.
   - Clic direct sur la notification pour réouvrir ou basculer sur l'application.
   - Demande automatique de la permission `POST_NOTIFICATIONS` sur Android 13+ (API 33+).
-- 📋 **Support Copier / Coller & Sélection** :
-  - Touches dédiées **`COPY`**, **`PASTE`**, **`SEL`** dans la barre de touches rapides.
-  - Sélection tactile intuitive par glissement sur l'écran du terminal.
-  - Actions rapides "Copier tout le terminal" et "Coller" dans le tiroir latéral.
-- ⌨️ **Barre de touches rapides multi-pages (2 Pages)** :
-  - **Page 1 (Contrôle & Navigation)** : `ESC`, `☰`, `↕`, `HOME`, `↑`, `END`, `⇄` (TAB), `CTRL`, `ALT`, `←`, `↓`, `→`, `PASTE`.
-  - **Page 2 (Symboles & Presse-papier)** : `/`, `-`, `~`, `|`, `$`, `&`, `COPY`, `PASTE`, `SEL`, `PGUP`, `PGDN`, `;`, `:`.
 
 ---
 
-## 📱 Téléchargement de l'APK (v0.0.4)
+## 📱 Téléchargement de l'APK (v0.0.6)
 
 1. Rendez-vous dans la section [**Releases**](https://github.com/Djeyby-stack/Hva/releases) du dépôt GitHub.
-2. Téléchargez **`Hva-debug.apk`** sous la version **v0.0.4**.
+2. Téléchargez **`Hva-debug.apk`** sous la version **v0.0.6**.
 3. Installez l'APK sur votre appareil Android (en autorisant l'installation d'applications de sources inconnues si demandé).
 
 ---
 
-## 🧪 Guide de Test & Vérification Complète (v0.0.4)
+## 🧪 Guide de Test & Vérification Complète (v0.0.6)
 
 ### 1. Test de la saisie au clavier et affichage direct
 1. Ouvrez l'application Hva. Le prompt vert `~$ ` s'affiche.
@@ -144,6 +158,20 @@ history
 | **Compatibilité ncurses (vim/htop)** | Native complète via NDK PTY | Émulation ANSI xterm-256color |
 | **Gestionnaire de paquets** | `apt` / `dpkg` avec bootstrap Debian | **Gestionnaire `pkg` Bionic autonome sans root** |
 | **Permission Stockage** | Requiert configuration manuelle | **HOME sandboxé et accessible immédiatement** |
+
+---
+
+## 🗺️ Feuille de Route Impitoyable (Roadmap v0.0.5 & v0.0.6)
+
+### 🎯 Objectifs v0.0.5 (Passerelle Native & Réseau Avancé)
+- [ ] **Couche PTY Native NDK (`libhva-pty.so`)** : Allocation de vrais pseudo-terminaux Unix (`/dev/ptmx`, `openpty()`) pour faire tourner nativement `htop`, `vim` et `nano`.
+- [ ] **Client SSH & SFTP Intégré** : Connexion distante directe sans installer de paquets tiers (`ssh user@server -p 22`).
+- [ ] **Éditeur de texte TUI intégré (`hva-edit`)** : Éditeur plein écran fluide avec coloration syntaxique et raccourcis tactiles.
+
+### 🚀 Objectifs v0.0.6 (L'Écosystème & Parité Totale avec Termux)
+- [ ] **Dépôt de Paquets Distant (Debian/Termux Mirror)** : Téléchargement et extraction de binaires ELF complets (`gcc`, `clang`, `nodejs`, `rustc`, `git`).
+- [ ] **Gestionnaire de Fenêtres & Split Screen** : Séparation d'écran horizontale/verticale (multiplexage comme Tmux) directement dans l'interface Compose.
+- [ ] **Mode Widgets & Raccourcis Home Screen** : Lancement direct de scripts bash en 1 clic depuis l'écran d'accueil Android.
 
 ---
 
