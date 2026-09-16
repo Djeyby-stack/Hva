@@ -1,6 +1,6 @@
 {
   "name": "Hva",
-  "description": "Terminal Android moderne, performant et autonome avec émulateur VT100/ANSI, gestionnaire de sessions multiples et environnement UNIX Bionic.",
+  "description": "Terminal Android moderne, performant et autonome (v0.0.7) avec gestionnaire de paquets distants GitHub, éditeur de texte interactif, émulateur VT100/ANSI et environnement UNIX Bionic.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

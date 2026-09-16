@@ -7,7 +7,8 @@ data class PackageMeta(
     val sizeBytes: Long,
     val sha256: String,
     val dependencies: List<String> = emptyList(),
-    val files: List<String> = emptyList()
+    val files: List<String> = emptyList(),
+    val downloadUrl: String? = null
 )
 
 data class InstalledPackage(

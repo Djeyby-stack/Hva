@@ -42,6 +42,7 @@ class HvaShellEngine(
     private val homeDir = HvaEnvironment.getHomeDir(context)
     private val prefixDir = HvaEnvironment.getPrefixDir(context)
     private val binDir = HvaEnvironment.getBinDir(context)
+    private val pkgManager = com.example.hva.pkg.PackageManager(context)
     private var previousDir: File = cwd
     private val aliases = mutableMapOf<String, String>(
         "ll" to "ls -la",
@@ -648,6 +649,13 @@ class HvaShellEngine(
             return true
         }
 
+        // 9b. Built-in: edit / hva-edit / nano / micro
+        if (cmd == "edit" || cmd == "hva-edit" || cmd == "nano" || cmd == "micro") {
+            handleEditorCommand(parts.drop(1))
+            if (async) printPrompt()
+            return true
+        }
+
         // 10. Built-in: cmatrix
         if (cmd == "cmatrix") {
             executeCMatrix()
@@ -1052,7 +1060,7 @@ class HvaShellEngine(
         val uptimeHours = (SystemClock.elapsedRealtime() / (1000 * 60 * 60)).toInt()
         val uptimeMins = ((SystemClock.elapsedRealtime() / (1000 * 60)) % 60).toInt()
         val uptimeStr = "$uptimeHours hours, $uptimeMins mins"
-        val installedCount = getInstalledPackages().size
+        val installedCount = pkgManager.listInstalled().size
         val resolution = "${emulator.screen.columns}x${emulator.screen.rows} (cols x rows)"
 
         val am = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
@@ -1102,7 +1110,7 @@ class HvaShellEngine(
         val uptimeMins = ((SystemClock.elapsedRealtime() / (1000 * 60)) % 60).toInt()
         val uptimeStr = "$uptimeHours hours, $uptimeMins mins"
         val arch = Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
-        val installedCount = getInstalledPackages().size
+        val installedCount = pkgManager.listInstalled().size
 
         val rt = Runtime.getRuntime()
         val usedMem = (rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)
@@ -1350,42 +1358,106 @@ class HvaShellEngine(
         writeToScreen(doctor)
     }
 
+    private fun handleEditorCommand(args: List<String>) {
+        val fileName = args.firstOrNull() ?: "untitled.txt"
+        val file = if (fileName.startsWith("/")) File(fileName) else File(cwd, fileName)
+
+        val exists = file.exists()
+        val content = if (exists) {
+            try { file.readText() } catch (_: Exception) { "" }
+        } else ""
+
+        writeToScreen("\u001b[01;36m═══════════════════════════════════════════════════════════\u001b[00m\r\n")
+        writeToScreen("\u001b[01;32m      HVA TEXT EDITOR (v${HvaEnvironment.VERSION}) — ${file.name}\u001b[00m\r\n")
+        writeToScreen("\u001b[01;36m═══════════════════════════════════════════════════════════\u001b[00m\r\n")
+        if (content.isNotBlank()) {
+            val lines = content.split("\n")
+            lines.forEachIndexed { i, line ->
+                writeToScreen(String.format(" \u001b[01;30m%3d |\u001b[00m %s\r\n", i + 1, line))
+            }
+        } else {
+            writeToScreen("\u001b[01;33m(Nouveau fichier ou fichier vide)\u001b[00m\r\n")
+        }
+        writeToScreen("\u001b[01;36m───────────────────────────────────────────────────────────\u001b[00m\r\n")
+        writeToScreen("\u001b[01;37mAstuces d'édition rapide :\u001b[00m\r\n")
+        writeToScreen("  \u001b[01;32mecho \"texte\" > ${file.name}\u001b[00m    Remplacer le contenu\r\n")
+        writeToScreen("  \u001b[01;32mecho \"texte\" >> ${file.name}\u001b[00m   Ajouter une ligne à la fin\r\n")
+        writeToScreen("  \u001b[01;32mcat ${file.name}\u001b[00m               Afficher le contenu complet\r\n")
+    }
+
     private fun handlePkgCommand(args: List<String>) {
         val action = args.firstOrNull() ?: "help"
         when (action) {
-            "update", "up" -> {
-                writeToScreen("\u001b[01;34m[pkg]\u001b[00m Synchronisation des métadonnées des dépôts...\r\n")
-                writeToScreen("Get:1 https://pkg.termux.dev/repo/v1 main InRelease [14.2 kB]\r\n")
-                writeToScreen("Get:2 https://pkg.hva.internal/repo/v${HvaEnvironment.VERSION} core InRelease [8.7 kB]\r\n")
-                writeToScreen("Reading package lists... \u001b[01;32mDone\u001b[00m\r\n")
-                writeToScreen("Building dependency tree... \u001b[01;32mDone\u001b[00m\r\n")
-                writeToScreen("\u001b[01;32m[pkg]\u001b[00m Tous les index de dépôts sont à jour.\r\n")
+            "update", "up", "sync" -> {
+                writeToScreen("\u001b[01;34m[pkg]\u001b[00m Synchronisation avec les dépôts distants GitHub...\r\n")
+                val repos = pkgManager.getRepositories()
+                repos.forEachIndexed { idx, url ->
+                    writeToScreen("Get:${idx + 1} $url [index.json]\r\n")
+                }
+                thread(name = "Hva-PkgSync", isDaemon = true) {
+                    val res = pkgManager.syncRemoteRepo()
+                    if (res.isSuccess) {
+                        writeToScreen("Reading package lists... \u001b[01;32mDone\u001b[00m (${res.getOrDefault(0)} packages available)\r\n")
+                        writeToScreen("\u001b[01;32m[pkg]\u001b[00m Tous les index de dépôts GitHub sont à jour.\r\n")
+                    } else {
+                        writeToScreen("\u001b[01;31m[pkg]\u001b[00m Échec de synchronisation distante, utilisation du catalogue local.\r\n")
+                    }
+                    printPrompt()
+                }
             }
             "upgrade" -> {
                 writeToScreen("\u001b[01;34m[pkg]\u001b[00m Vérification des mises à niveau...\r\n")
                 writeToScreen("Reading package lists... Done\r\n")
                 writeToScreen("Building dependency tree... Done\r\n")
-                writeToScreen("0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.\r\n")
-                writeToScreen("\u001b[01;32m[pkg]\u001b[00m Le système et tous les paquets sont à jour (v${HvaEnvironment.VERSION}).\r\n")
+                val installed = pkgManager.listInstalled()
+                writeToScreen("${installed.size} installed, 0 upgraded, 0 to remove.\r\n")
+                writeToScreen("\u001b[01;32m[pkg]\u001b[00m Tous les paquets installés sont à jour.\r\n")
+            }
+            "repo" -> {
+                val sub = args.getOrNull(1) ?: "list"
+                when (sub) {
+                    "list" -> {
+                        writeToScreen("\u001b[01;36mDépôts GitHub configurés :\u001b[00m\r\n")
+                        pkgManager.getRepositories().forEach { r ->
+                            writeToScreen("  - $r\r\n")
+                        }
+                    }
+                    "add" -> {
+                        val url = args.getOrNull(2)
+                        if (url.isNullOrBlank()) {
+                            writeToScreen("Usage: pkg repo add <url_github_json>\r\n")
+                        } else {
+                            val added = pkgManager.addRepository(url)
+                            if (added) {
+                                writeToScreen("\u001b[01;32m[pkg]\u001b[00m Dépôt '$url' ajouté avec succès.\r\n")
+                            } else {
+                                writeToScreen("Dépôt déjà existant ou invalide.\r\n")
+                            }
+                        }
+                    }
+                    "reset" -> {
+                        pkgManager.resetRepositories()
+                        writeToScreen("\u001b[01;32m[pkg]\u001b[00m Dépôts réinitialisés au miroir GitHub officiel HVA.\r\n")
+                    }
+                    else -> {
+                        writeToScreen("Usage: pkg repo [list | add <url> | reset]\r\n")
+                    }
+                }
             }
             "search" -> {
                 val query = args.getOrNull(1) ?: ""
-                val available = getAvailablePackages()
-                val matches = if (query.isBlank()) available else available.filter {
-                    it.name.contains(query, ignoreCase = true) || it.description.contains(query, ignoreCase = true)
-                }
-
-                writeToScreen("\u001b[01;36mPaquets disponibles (${matches.size}) :\u001b[00m\r\n")
+                val matches = pkgManager.search(query)
+                writeToScreen("\u001b[01;36mPaquets GitHub disponibles (${matches.size}) :\u001b[00m\r\n")
                 matches.forEach { pkg ->
-                    val status = if (isPackageInstalled(pkg.name)) "\u001b[01;32m[installé]\u001b[00m" else ""
-                    writeToScreen(String.format("  \u001b[01;33m%-15s\u001b[00m - %s %s\r\n", pkg.name, pkg.description, status))
+                    val status = if (pkgManager.isInstalled(pkg.name)) "\u001b[01;32m[installé]\u001b[00m" else ""
+                    writeToScreen(String.format("  \u001b[01;33m%-15s\u001b[00m v%-8s - %s %s\r\n", pkg.name, pkg.version, pkg.description, status))
                 }
             }
             "list" -> {
-                val installed = getInstalledPackages()
+                val installed = pkgManager.listInstalled()
                 writeToScreen("\u001b[01;36mPaquets installés (${installed.size}) :\u001b[00m\r\n")
-                installed.forEach { name ->
-                    writeToScreen("  \u001b[01;32m$name\u001b[00m (v1.0.0, userspace-ready)\r\n")
+                installed.forEach { pkg ->
+                    writeToScreen("  \u001b[01;32m${pkg.name}\u001b[00m (v${pkg.version})\r\n")
                 }
             }
             "install", "i" -> {
@@ -1395,7 +1467,13 @@ class HvaShellEngine(
                     return
                 }
                 targets.forEach { target ->
-                    installPackage(target)
+                    writeToScreen("\u001b[01;34m[pkg]\u001b[00m Téléchargement et installation de '$target' depuis GitHub...\r\n")
+                    val result = pkgManager.install(target)
+                    if (result.isSuccess) {
+                        writeToScreen("\u001b[01;32m[pkg]\u001b[00m ${result.getOrNull()}\r\n")
+                    } else {
+                        writeToScreen("\u001b[01;31m[pkg]\u001b[00m Erreur: ${result.exceptionOrNull()?.message}\r\n")
+                    }
                 }
             }
             "remove", "uninstall", "purge" -> {
@@ -1404,7 +1482,12 @@ class HvaShellEngine(
                     writeToScreen("Usage: pkg remove <nom_paquet>\r\n")
                     return
                 }
-                removePackage(target)
+                val result = pkgManager.remove(target)
+                if (result.isSuccess) {
+                    writeToScreen("\u001b[01;32m[pkg]\u001b[00m ${result.getOrNull()}\r\n")
+                } else {
+                    writeToScreen("\u001b[01;31m[pkg]\u001b[00m Erreur: ${result.exceptionOrNull()?.message}\r\n")
+                }
             }
             "show", "info" -> {
                 val target = args.getOrNull(1)
@@ -1412,233 +1495,28 @@ class HvaShellEngine(
                     writeToScreen("Usage: pkg show <nom_paquet>\r\n")
                     return
                 }
-                val pkg = getAvailablePackages().find { it.name.equals(target, ignoreCase = true) }
-                if (pkg != null) {
-                    writeToScreen("Package: ${pkg.name}\r\n")
-                    writeToScreen("Version: 1.0.0-hva\r\n")
-                    writeToScreen("Architecture: ${Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64"}\r\n")
-                    writeToScreen("Description: ${pkg.description}\r\n")
-                    writeToScreen("Installed: ${if (isPackageInstalled(pkg.name)) "yes" else "no"}\r\n")
+                val meta = pkgManager.getInfo(target)
+                if (meta != null) {
+                    writeToScreen("Package: ${meta.name}\r\n")
+                    writeToScreen("Version: ${meta.version}\r\n")
+                    writeToScreen("Architecture: ${Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"}\r\n")
+                    writeToScreen("Description: ${meta.description}\r\n")
+                    writeToScreen("Download URL: ${meta.downloadUrl ?: "GitHub Engine Direct"}\r\n")
+                    writeToScreen("Installed: ${if (pkgManager.isInstalled(meta.name)) "yes" else "no"}\r\n")
                 } else {
-                    writeToScreen("Package: $target\r\n")
-                    writeToScreen("Version: 1.0.0-userspace\r\n")
-                    writeToScreen("Status: Available for installation\r\n")
+                    writeToScreen("Paquet '$target' non trouvé.\r\n")
                 }
             }
             else -> {
-                writeToScreen("\u001b[01;36mGestionnaire de paquets Hva (pkg) — Commandes disponibles\u001b[00m\r\n")
-                writeToScreen("  pkg update                 Mettre à jour les listes de paquets\r\n")
-                writeToScreen("  pkg upgrade                Mettre à niveau tous les paquets installés\r\n")
-                writeToScreen("  pkg search <requête>       Rechercher un paquet\r\n")
-                writeToScreen("  pkg install <paquet>       Installer un paquet (ex: pkg install fastfetch)\r\n")
-                writeToScreen("  pkg list                   Lister les paquets installés\r\n")
+                writeToScreen("\u001b[01;36mGestionnaire de paquets GitHub HVA (pkg v0.0.7)\u001b[00m\r\n")
+                writeToScreen("  pkg update                 Synchroniser les index distants GitHub\r\n")
+                writeToScreen("  pkg repo [list|add|reset]  Gérer les sources de dépôts GitHub\r\n")
+                writeToScreen("  pkg search <requête>       Rechercher un binaire ou paquet\r\n")
+                writeToScreen("  pkg install <paquet>       Télécharger et installer un binaire GitHub\r\n")
+                writeToScreen("  pkg list                   Afficher tous les paquets installés\r\n")
                 writeToScreen("  pkg remove <paquet>        Désinstaller un paquet\r\n")
-                writeToScreen("  pkg show <paquet>          Afficher les détails d'un paquet\r\n")
+                writeToScreen("  pkg show <paquet>          Informations détaillées du paquet\r\n")
             }
-        }
-    }
-
-    private data class HvaPackage(val name: String, val description: String)
-
-    private fun getAvailablePackages(): List<HvaPackage> {
-        return listOf(
-            HvaPackage("fastfetch", "Outil ultra-rapide d'affichage d'informations système et specs"),
-            HvaPackage("neofetch", "Affichage rapide des specs système et logo ANSI coloré"),
-            HvaPackage("cmatrix", "Animation d'effets visuels Matrix avec pluie de caractères verts"),
-            HvaPackage("sl", "Locomotive à vapeur ASCII en animation de défilement"),
-            HvaPackage("cowsay", "Vache ASCII parlante personnalisable"),
-            HvaPackage("figlet", "Générateur de bannières ASCII Art en grands caractères"),
-            HvaPackage("toilet", "Bannières et polices décoratives terminal en couleur"),
-            HvaPackage("fortune", "Générateur de citations et adages célèbres pour développeurs"),
-            HvaPackage("coreutils", "Utilitaires UNIX essentiels (cat, ls, mkdir, cp, mv, rm, touch)"),
-            HvaPackage("nano", "Éditeur de texte terminal convivial et rapide"),
-            HvaPackage("micro", "Éditeur de texte moderne avec coloration et raccourcis intuitifs"),
-            HvaPackage("tree", "Visualiseur d'arborescence récursive de dossiers et fichiers"),
-            HvaPackage("python", "Environnement d'exécution Python 3 et interpréteur interactif"),
-            HvaPackage("curl", "Outil en ligne de commande pour requêtes HTTP/HTTPS"),
-            HvaPackage("wget", "Téléchargeur de fichiers HTTP/FTP avec reprise"),
-            HvaPackage("git", "Système de contrôle de version distribué"),
-            HvaPackage("htop", "Gestionnaire de processus interactif et moniteur système"),
-            HvaPackage("btop", "Moniteur de ressources moderne et graphique pour CPU/RAM/Disque"),
-            HvaPackage("cal", "Affichage du calendrier mensuel interactif"),
-            HvaPackage("bc", "Calculatrice arithmétique et évaluateur de précision arbitraire"),
-            HvaPackage("busybox", "Couteau suisse des utilitaires Linux embarqués"),
-            HvaPackage("jq", "Processeur et filtreur JSON léger en ligne de commande"),
-            HvaPackage("tar", "Archiveur de fichiers et compression"),
-            HvaPackage("zip", "Compresseur et extracteur ZIP"),
-            HvaPackage("unzip", "Décompresseur d'archives ZIP"),
-            HvaPackage("grep", "Recherche de motifs d'expressions régulières"),
-            HvaPackage("sed", "Éditeur de flux de texte pour filtrage et transformation"),
-            HvaPackage("awk", "Langage de traitement de texte et de motifs")
-        )
-    }
-
-    private fun isPackageInstalled(name: String): Boolean {
-        val file = File(binDir, name)
-        return file.exists() || name in listOf("coreutils", "neofetch", "fastfetch", "hva", "pkg", "termux-change-repo")
-    }
-
-    private fun getInstalledPackages(): List<String> {
-        val installed = mutableListOf("coreutils", "bionic-sh", "hva", "pkg", "fastfetch", "neofetch", "termux-change-repo")
-        binDir.listFiles()?.forEach { f ->
-            if (f.isFile && !installed.contains(f.name)) {
-                installed.add(f.name)
-            }
-        }
-        return installed.distinct()
-    }
-
-    private fun installPackage(name: String) {
-        val normalized = name.lowercase(Locale.ROOT).trim()
-        writeToScreen("\u001b[01;34m[pkg]\u001b[00m Lecture des listes de paquets... Done\r\n")
-        writeToScreen("\u001b[01;34m[pkg]\u001b[00m Résolution des dépendances pour '$normalized'...\r\n")
-        writeToScreen("Get:1 https://pkg.termux.dev/repo/v1 $normalized [520 kB]\r\n")
-        writeToScreen("Extraction des fichiers vers $prefixDir...\r\n")
-
-        val targetFile = File(binDir, normalized)
-        try {
-            when (normalized) {
-                "fastfetch" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva fastfetch "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                "neofetch" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva neofetch "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                "cmatrix" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva cmatrix "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                "sl" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva sl "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                "cowsay" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva cowsay "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                "figlet", "toilet" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva figlet "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                "fortune" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva fortune "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                "cal" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva cal "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                "bc" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva bc "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                "nano", "micro" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |printf "\033[01;32m[$normalized Editor]\033[00m Mode édition:\n"
-                        |if [ -n "$1" ]; then
-                        |  printf "Fichier: %s\n" "$1"
-                        |  cat "$1" 2>/dev/null || printf "(Nouveau fichier)\n"
-                        |fi
-                        """.trimMargin()
-                    )
-                }
-                "tree" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva tree "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                "python", "python3" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva python "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                "curl" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva curl "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                "wget" -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |exec hva wget "${'$'}@"
-                        """.trimMargin()
-                    )
-                }
-                else -> {
-                    targetFile.writeText(
-                        """
-                        |#!/system/bin/sh
-                        |printf "\033[01;32m[%s]\033[00m Paquet opérationnel.\n" "$normalized"
-                        """.trimMargin()
-                    )
-                }
-            }
-            targetFile.setReadable(true, false)
-            targetFile.setExecutable(true, false)
-            writeToScreen("Configuration de $normalized...\r\n")
-            writeToScreen("\u001b[01;32m[✓] Paquet '$normalized' installé avec succès dans \$PREFIX/bin/$normalized.\u001b[00m\r\n")
-        } catch (e: Exception) {
-            writeToScreen("\u001b[01;31mErreur d'installation : ${e.message}\u001b[00m\r\n")
-        }
-    }
-
-    private fun removePackage(name: String) {
-        val target = File(binDir, name)
-        if (target.exists()) {
-            target.delete()
-            writeToScreen("\u001b[01;32m[✓] Paquet '$name' désinstallé avec succès.\u001b[00m\r\n")
-        } else {
-            writeToScreen("E: Le paquet '$name' n'est pas installé.\r\n")
         }
     }
 

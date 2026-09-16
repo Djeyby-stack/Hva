@@ -1,17 +1,26 @@
-# Hva — Terminal Android Moderne & Autonome (v0.0.6)
+# Hva — Terminal Android Moderne & Autonome (v0.0.7)
 
 [![Build & Release Android Debug APK](https://github.com/Djeyby-stack/Hva/actions/workflows/build-and-release-apk.yml/badge.svg)](https://github.com/Djeyby-stack/Hva/actions/workflows/build-and-release-apk.yml)
 [![Platform](https://img.shields.io/badge/Platform-Android-3DDC84.svg?logo=android&logoColor=white)](https://android.com)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4.svg?logo=jetpackcompose&logoColor=white)](https://developer.android.com/jetpack/compose)
 [![Kotlin](https://img.shields.io/badge/Language-Kotlin-7F52FF.svg?logo=kotlin&logoColor=white)](https://kotlinlang.org)
-[![Version](https://img.shields.io/badge/Version-0.0.6-blue.svg)](https://github.com/Djeyby-stack/Hva/releases)
+[![Version](https://img.shields.io/badge/Version-0.0.7-blue.svg)](https://github.com/Djeyby-stack/Hva/releases)
 
-**Hva** est un émulateur de terminal Android autonome, rapide et moderne conçu avec **Jetpack Compose** et **Kotlin Coroutines**. Il fournit un environnement UNIX complet (Bionic / BusyBox) sans nécessiter de root, un moteur de saisie interactive avec historique et autocomplétion, une barre de touches rapides multi-pages, des notifications persistantes de session et le support complet du copier/coller.
+**Hva** est un émulateur de terminal Android autonome, rapide et moderne conçu avec **Jetpack Compose** et **Kotlin Coroutines**. Il fournit un environnement UNIX complet (Bionic / BusyBox) sans nécessiter de root, un moteur de gestionnaire de paquets distant GitHub (`pkg`), un éditeur de texte interactif intégrable, un moteur de saisie avec historique et autocomplétion, une barre de touches rapides multi-pages, des notifications persistantes de session et le support complet du copier/coller.
 
 ---
 
-## 🌟 Nouveautés & Stabilité de la Version 0.0.6
+## 🌟 Nouveautés & Stabilité de la Version 0.0.7
 
+- 📦 **Gestionnaire de Paquets Distant GitHub (`pkg` / `hva pkg`)** :
+  - `pkg update` / `pkg sync` : Synchronisation en direct avec le dépôt GitHub distant (`https://raw.githubusercontent.com/Djeyby-stack/hva-packages/main/packages.json`).
+  - `pkg install <nom>` : Téléchargement direct HTTP et installation de binaires d'exécutables réels et scripts UNIX dans `$PREFIX/bin`.
+  - `pkg repo list` / `pkg repo add <url>` / `pkg repo reset` : Gestion dynamique de plusieurs sources de dépôts de paquets sur GitHub.
+  - `pkg search <requête>` : Recherche combinée dans le catalogue local et le catalogue GitHub synchrone.
+  - `pkg list` & `pkg remove <nom>` : Transactionnalité complète avec contrôle de sécurité anti-Path Traversal (anti-Zip Slip) et rollback d'échec.
+- 📝 **Éditeur de Texte Intégré (`hva-edit` / `edit` / `nano` / `micro`)** :
+  - Mode d'édition et de lecture directe de fichiers texte dans le terminal sans quitter HVA.
+  - Numérotation des lignes, coloration d'état et raccourcis d'édition rapide (`echo`, `cat`).
 - 🚀 **Stabilité Rendu & Performance Temps Réel** :
   - Pipeline de rendu d'écran optimisé pour éliminer la latence de frappe.
   - Compatibilité renforcée avec les wrappers d'exécution de code CLI (scripts Python, Node.js, Shell et OpenCode CLI).

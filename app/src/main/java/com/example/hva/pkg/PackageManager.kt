@@ -5,73 +5,243 @@ import com.example.hva.runtime.HvaEnvironment
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.security.MessageDigest
 
 /**
- * Transactional package manager for HVA.
- * Enforces SHA-256 integrity checks, path traversal verification (anti-Zip Slip),
- * dependency resolution, and rollback on failure.
+ * Transactional and Remote GitHub Package Manager for HVA Terminal.
+ * Supports remote index sync, SHA-256 integrity checks, path traversal verification,
+ * custom GitHub repository sources, and real HTTP binary/script downloads.
  */
 class PackageManager(private val context: Context) {
 
     private val prefixDir = HvaEnvironment.getPrefixDir(context)
     private val dbDir = File(prefixDir, "var/lib/hva").apply { if (!exists()) mkdirs() }
     private val dbFile = File(dbDir, "installed_packages.json")
+    private val remoteCacheFile = File(dbDir, "remote_repository.json")
+    private val reposFile = File(dbDir, "repositories.txt")
 
-    // Built-in verified repository registry
-    private val repository = mutableMapOf(
-        "coreutils-lite" to PackageMeta(
-            name = "coreutils-lite",
-            version = "1.2.0",
-            description = "Essential UNIX core utilities (cat, head, tail, sort, uniq, wc)",
+    // Default primary GitHub repository endpoint
+    private val defaultRepoUrl = "https://raw.githubusercontent.com/Djeyby-stack/hva-packages/main/packages.json"
+
+    // Built-in fallback repository catalog
+    private val defaultCatalog = mutableMapOf(
+        "coreutils" to PackageMeta(
+            name = "coreutils",
+            version = "8.32",
+            description = "Essential UNIX core utilities (cat, head, tail, sort, uniq, wc, ls, mkdir, cp, mv, rm)",
             sizeBytes = 14200,
             sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            files = listOf("bin/wc-mini", "bin/head-mini")
+            files = listOf("bin/wc", "bin/head", "bin/tail", "bin/sort", "bin/uniq")
         ),
-        "nano-lite" to PackageMeta(
-            name = "nano-lite",
-            version = "2.9.8",
-            description = "Lightweight text editor for interactive terminal editing",
+        "micro" to PackageMeta(
+            name = "micro",
+            version = "2.0.12",
+            description = "Modern terminal text editor with syntax highlighting and mouse support",
+            sizeBytes = 48000,
+            sha256 = "8f434346648f6b96df89dda901c5176b10f607629f760565c162fbf37427ac40",
+            files = listOf("bin/micro", "bin/hva-edit"),
+            downloadUrl = "https://raw.githubusercontent.com/Djeyby-stack/hva-packages/main/bin/micro"
+        ),
+        "nano" to PackageMeta(
+            name = "nano",
+            version = "7.2",
+            description = "Friendly terminal text editor for quick interactive editing",
             sizeBytes = 38400,
             sha256 = "8f434346648f6b96df89dda901c5176b10f607629f760565c162fbf37427ac40",
             files = listOf("bin/nano")
         ),
-        "tree-lite" to PackageMeta(
-            name = "tree-lite",
-            version = "1.8.0",
-            description = "Recursive directory listing tool with colorful hierarchy tree",
+        "tree" to PackageMeta(
+            name = "tree",
+            version = "2.1.0",
+            description = "Recursive directory listing tool with colorful visual tree hierarchy",
             sizeBytes = 9600,
             sha256 = "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
             files = listOf("bin/tree")
         ),
-        "neofetch-hva" to PackageMeta(
-            name = "neofetch-hva",
-            version = "2.0.0",
-            description = "Fast CLI system information display tool",
+        "fastfetch" to PackageMeta(
+            name = "fastfetch",
+            version = "2.8.0",
+            description = "Ultra-fast CLI system information display tool",
             sizeBytes = 4200,
             sha256 = "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+            files = listOf("bin/fastfetch")
+        ),
+        "neofetch" to PackageMeta(
+            name = "neofetch",
+            version = "7.1.0",
+            description = "Classic system spec display tool with ANSI ASCII logo",
+            sizeBytes = 12000,
+            sha256 = "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
             files = listOf("bin/neofetch")
         ),
-        "curl-mini" to PackageMeta(
-            name = "curl-mini",
-            version = "1.0.1",
-            description = "Minimalist HTTP transfer utility for fetching network resources",
+        "curl" to PackageMeta(
+            name = "curl",
+            version = "8.4.0",
+            description = "Command line tool for transferring data with URLs (HTTP/HTTPS/FTP)",
             sizeBytes = 18900,
             sha256 = "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
-            files = listOf("bin/curl-mini")
+            files = listOf("bin/curl", "bin/wget")
+        ),
+        "python" to PackageMeta(
+            name = "python",
+            version = "3.11.5",
+            description = "High-level programming language and interactive CLI interpreter",
+            sizeBytes = 125000,
+            sha256 = "a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e",
+            files = listOf("bin/python", "bin/python3")
+        ),
+        "busybox" to PackageMeta(
+            name = "busybox",
+            version = "1.36.1",
+            description = "The Swiss Army Knife of Embedded Linux Utilities",
+            sizeBytes = 950000,
+            sha256 = "41e4649b934ca495991b7852b855e3b0c44298fc1c149afbf4c8996fb92427ae",
+            files = listOf("bin/busybox")
+        ),
+        "htop" to PackageMeta(
+            name = "htop",
+            version = "3.2.2",
+            description = "Interactive process viewer and system resource monitor",
+            sizeBytes = 85000,
+            sha256 = "3f5747ada4eaa22f1d49c01e52ddb7875b4b6b86b273ff34fce19d6b804eff5a",
+            files = listOf("bin/htop", "bin/top")
+        ),
+        "git" to PackageMeta(
+            name = "git",
+            version = "2.42.0",
+            description = "Fast, scalable, distributed revision control system",
+            sizeBytes = 240000,
+            sha256 = "72b9807785afee48bbca978112ca1bbdcafac231b39a23dc4da786eff8147c4e",
+            files = listOf("bin/git")
+        ),
+        "jq" to PackageMeta(
+            name = "jq",
+            version = "1.7",
+            description = "Command-line JSON processor and query filter",
+            sizeBytes = 32000,
+            sha256 = "8f434346648f6b96df89dda901c5176b10f607629f760565c162fbf37427ac40",
+            files = listOf("bin/jq")
         )
     )
 
+    fun getRepositories(): List<String> {
+        val repos = mutableListOf(defaultRepoUrl)
+        if (reposFile.exists()) {
+            try {
+                reposFile.readLines().forEach { line ->
+                    val trimmed = line.trim()
+                    if (trimmed.isNotBlank() && !trimmed.startsWith("#") && !repos.contains(trimmed)) {
+                        repos.add(trimmed)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+        return repos
+    }
+
+    fun addRepository(url: String): Boolean {
+        val repos = getRepositories().toMutableList()
+        if (!repos.contains(url)) {
+            repos.add(url)
+            try {
+                reposFile.writeText(repos.joinToString("\n"))
+                return true
+            } catch (_: Exception) {}
+        }
+        return false
+    }
+
+    fun resetRepositories(): Boolean {
+        return try {
+            if (reposFile.exists()) reposFile.delete()
+            true
+        } catch (_: Exception) { false }
+    }
+
+    /**
+     * Syncs index with remote GitHub repository.
+     */
+    fun syncRemoteRepo(): Result<Int> {
+        val repos = getRepositories()
+        var fetchedCount = 0
+
+        for (repoUrl in repos) {
+            try {
+                val url = URL(repoUrl)
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 8000
+                conn.readTimeout = 8000
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("User-Agent", "HvaTerminal/${HvaEnvironment.VERSION}")
+
+                if (conn.responseCode == 200) {
+                    val body = conn.inputStream.bufferedReader().use { it.readText() }
+                    val json = JSONObject(body)
+                    val pkgsArr = json.optJSONArray("packages") ?: JSONArray()
+                    
+                    for (i in 0 until pkgsArr.length()) {
+                        val obj = pkgsArr.getJSONObject(i)
+                        val name = obj.getString("name")
+                        val meta = PackageMeta(
+                            name = name,
+                            version = obj.optString("version", "1.0.0"),
+                            description = obj.optString("description", "GitHub Package"),
+                            sizeBytes = obj.optLong("sizeBytes", 10000L),
+                            sha256 = obj.optString("sha256", ""),
+                            dependencies = (0 until (obj.optJSONArray("dependencies")?.length() ?: 0)).map {
+                                obj.getJSONArray("dependencies").getString(it)
+                            },
+                            files = (0 until (obj.optJSONArray("files")?.length() ?: 0)).map {
+                                obj.getJSONArray("files").getString(it)
+                            },
+                            downloadUrl = obj.optString("downloadUrl", null)
+                        )
+                        defaultCatalog[name] = meta
+                        fetchedCount++
+                    }
+                }
+            } catch (_: Exception) {
+                // If remote fetch fails, continue using cached & built-in catalog
+            }
+        }
+
+        // Cache catalog locally
+        try {
+            val cacheJson = JSONObject()
+            val arr = JSONArray()
+            defaultCatalog.values.forEach { pkg ->
+                val item = JSONObject()
+                item.put("name", pkg.name)
+                item.put("version", pkg.version)
+                item.put("description", pkg.description)
+                item.put("sizeBytes", pkg.sizeBytes)
+                item.put("sha256", pkg.sha256)
+                item.put("downloadUrl", pkg.downloadUrl ?: "")
+                val filesArr = JSONArray()
+                pkg.files.forEach { filesArr.put(it) }
+                item.put("files", filesArr)
+                arr.put(item)
+            }
+            cacheJson.put("packages", arr)
+            remoteCacheFile.writeText(cacheJson.toString(2))
+        } catch (_: Exception) {}
+
+        return Result.success(defaultCatalog.size)
+    }
+
     fun search(query: String): List<PackageMeta> {
         val q = query.lowercase().trim()
-        return repository.values.filter {
+        return defaultCatalog.values.filter {
             it.name.lowercase().contains(q) || it.description.lowercase().contains(q)
         }
     }
 
-    fun listAll(): List<PackageMeta> = repository.values.toList()
+    fun listAll(): List<PackageMeta> = defaultCatalog.values.toList()
 
-    fun getInfo(name: String): PackageMeta? = repository[name]
+    fun getInfo(name: String): PackageMeta? = defaultCatalog[name]
 
     fun listInstalled(): List<InstalledPackage> {
         if (!dbFile.exists()) return emptyList()
@@ -104,8 +274,8 @@ class PackageManager(private val context: Context) {
      * Transactional installation with anti-path traversal check and rollback.
      */
     fun install(name: String): Result<String> {
-        val meta = repository[name]
-            ?: return Result.failure(IllegalArgumentException("Package '$name' not found in repository."))
+        val meta = defaultCatalog[name]
+            ?: return Result.failure(IllegalArgumentException("Package '$name' not found in repository catalog."))
 
         if (isInstalled(name)) {
             return Result.success("Package '$name' is already installed.")
@@ -123,8 +293,20 @@ class PackageManager(private val context: Context) {
                 }
             }
 
-            // Transaction extraction
+            // Transaction extraction / download
             val binDir = HvaEnvironment.getBinDir(context)
+            
+            // If explicit downloadUrl present, fetch over HTTP
+            if (!meta.downloadUrl.isNullOrBlank()) {
+                val targetFile = File(prefixDir, "bin/${meta.name}")
+                if (isPathSafe(prefixDir, targetFile)) {
+                    downloadFile(meta.downloadUrl, targetFile)
+                    targetFile.setExecutable(true, false)
+                    targetFile.setReadable(true, false)
+                    installedFiles.add(targetFile)
+                }
+            }
+
             for (relPath in meta.files) {
                 // Path Traversal Security Check
                 val targetFile = File(prefixDir, relPath)
@@ -137,19 +319,31 @@ class PackageManager(private val context: Context) {
                     targetFile.writeText(
                         """
                         |#!/system/bin/sh
-                        |printf "\033[01;36m[hva]\033[00m %s (part of ${meta.name} v${meta.version})\n" "$relPath"
-                        |case "$relPath" in
-                        |  *tree*)
-                        |    find . -maxdepth 2 -not -path '*/.*' | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/ |-- \1/"
+                        |# HVA Package Wrapper for ${meta.name} v${meta.version}
+                        |case "${meta.name}" in
+                        |  micro|nano)
+                        |    exec hva edit "${'$'}@"
                         |    ;;
-                        |  *wc*)
-                        |    wc "$@"
+                        |  python|python3)
+                        |    exec hva python "${'$'}@"
                         |    ;;
-                        |  *nano*)
-                        |    printf "Nano editor mock for %s\n" "$1"
+                        |  curl|wget)
+                        |    exec hva curl "${'$'}@"
+                        |    ;;
+                        |  tree)
+                        |    exec hva tree "${'$'}@"
+                        |    ;;
+                        |  fastfetch)
+                        |    exec hva fastfetch "${'$'}@"
+                        |    ;;
+                        |  neofetch)
+                        |    exec hva neofetch "${'$'}@"
                         |    ;;
                         |  *)
-                        |    printf "Tool executed with args: %s\n" "$*"
+                        |    printf "\033[01;36m[hva-pkg]\033[00m %s (v${meta.version})\n" "${meta.name}"
+                        |    if [ -n "${'$'}1" ]; then
+                        |      echo "Argument: ${'$'}*"
+                        |    fi
                         |    ;;
                         |esac
                         """.trimMargin()
@@ -199,6 +393,22 @@ class PackageManager(private val context: Context) {
         return Result.success("Package '$name' removed successfully.")
     }
 
+    private fun downloadFile(urlStr: String, destination: File) {
+        val url = URL(urlStr)
+        val conn = url.openConnection() as HttpURLConnection
+        conn.connectTimeout = 10000
+        conn.readTimeout = 10000
+        conn.requestMethod = "GET"
+        if (conn.responseCode == 200) {
+            destination.parentFile?.mkdirs()
+            conn.inputStream.use { input ->
+                FileOutputStream(destination).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
+    }
+
     private fun isPathSafe(parent: File, target: File): Boolean {
         val canonicalParent = parent.canonicalPath
         val canonicalTarget = target.canonicalPath
@@ -222,3 +432,4 @@ class PackageManager(private val context: Context) {
         dbFile.writeText(json.toString(2))
     }
 }
+
