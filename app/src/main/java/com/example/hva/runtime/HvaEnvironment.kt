@@ -60,11 +60,11 @@ object HvaEnvironment {
         val etc = File(prefix, "etc").apply { if (!exists()) mkdirs() }
         val tmp = getTempDir(context)
 
-        // Install default .profile with Termux welcome message and prompt
+        // Install default .profile with HVA welcome message and prompt
         val profileFile = File(home, ".profile")
         profileFile.writeText(
             """
-            |# Termux / HVA Environment
+            |# HVA Environment
             |export HOME="$home"
             |export PREFIX="$prefix"
             |export PATH="$bin:/system/bin:/system/xbin"
@@ -77,21 +77,19 @@ object HvaEnvironment {
             |alias la='ls -A'
             |alias cls='clear'
             |alias pkg='hva pkg'
+            |alias apt='hva pkg'
+            |alias apt-get='hva pkg'
             |
-            |# Welcome banner (Termux UI)
-            |printf 'Welcome to Termux!\n\n'
-            |printf 'Docs:       https://termux.dev/docs\n'
-            |printf 'Donate:     https://termux.dev/donate\n'
-            |printf 'Community:  https://termux.dev/community\n\n'
+            |# Welcome banner (HVA Terminal v0.0.7)
+            |printf '\033[01;36mWelcome to Hva Terminal v0.0.7!\033[00m\n\n'
+            |printf 'Docs:       https://github.com/Djeyby-stack/Hva\n'
+            |printf 'Community:  https://github.com/Djeyby-stack/Hva/issues\n\n'
             |printf 'Working with packages:\n\n'
             |printf ' - Search:  pkg search <query>\n'
             |printf ' - Install: pkg install <package>\n'
-            |printf ' - Upgrade: pkg upgrade\n\n'
-            |printf 'Subscribing to additional repositories:\n\n'
-            |printf ' - Root:    pkg install root-repo\n'
-            |printf ' - X11:     pkg install x11-repo\n\n'
-            |printf 'For fixing any repository issues,\ntry '\''termux-change-repo'\'' command.\n\n'
-            |printf 'Report issues at https://termux.dev/issues\n'
+            |printf ' - Upgrade: pkg update && pkg upgrade\n'
+            |printf ' - Doctor:  hva doctor\n'
+            |printf ' - System:  fastfetch | neofetch\n\n'
             """.trimMargin()
         )
         profileFile.setReadable(true, true)
@@ -107,13 +105,13 @@ object HvaEnvironment {
         pkgScript.setExecutable(true, false)
         pkgScript.setReadable(true, false)
 
-        // Install termux-change-repo script
-        val changeRepoScript = File(bin, "termux-change-repo")
+        // Install hva-change-repo script
+        val changeRepoScript = File(bin, "hva-change-repo")
         changeRepoScript.writeText(
             """
             |#!/system/bin/sh
-            |printf "\033[01;32m[*] Termux repository mirror manager\033[00m\n"
-            |printf "Currently active: Main Mirror (https://pkg.termux.dev/repo/v1)\n"
+            |printf "\033[01;32m[*] HVA Repository Mirror Manager\033[00m\n"
+            |printf "Currently active: Main Stack Mirror (https://pkg.hva.stack/main)\n"
             |printf "Mirrors synchronized and optimal.\n"
             """.trimMargin()
         )

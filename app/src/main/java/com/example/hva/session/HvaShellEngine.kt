@@ -91,11 +91,11 @@ class HvaShellEngine(
     private fun displayWelcomeBanner() {
         val banner = buildString {
             append("\u001b[01;36mWelcome to Hva Terminal v${HvaEnvironment.VERSION}!\u001b[00m\r\n\r\n")
-            append("\u001b[01;37mDocs:\u001b[00m       https://termux.dev/docs\r\n")
-            append("\u001b[01;37mCommunity:\u001b[00m  https://github.com/hva-terminal\r\n\r\n")
+            append("\u001b[01;37mDocs:\u001b[00m       https://github.com/Djeyby-stack/Hva\r\n")
+            append("\u001b[01;37mCommunity:\u001b[00m  https://github.com/Djeyby-stack/Hva/issues\r\n\r\n")
             append("\u001b[01;33mWorking with packages:\u001b[00m\r\n")
             append(" - Search:  \u001b[01;32mpkg search <query>\u001b[00m\r\n")
-            append(" - Install: \u001b[01;32mpkg install <package>\u001b[00m  (ex: \u001b[01;35mpkg install fastfetch\u001b[00m)\r\n")
+            append(" - Install: \u001b[01;32mpkg install <package>\u001b[00m\r\n")
             append(" - Upgrade: \u001b[01;32mpkg update && pkg upgrade\u001b[00m\r\n")
             append(" - Doctor:  \u001b[01;32mhva doctor\u001b[00m\r\n")
             append(" - System:  \u001b[01;32mfastfetch\u001b[00m | \u001b[01;32mneofetch\u001b[00m\r\n\r\n")
@@ -642,8 +642,8 @@ class HvaShellEngine(
             return true
         }
 
-        // 9. Built-in: pkg (update, upgrade, install, search, list, remove, show, help)
-        if (cmd == "pkg") {
+        // 9. Built-in: pkg / apt / apt-get (update, upgrade, install, search, list, remove, show, help)
+        if (cmd == "pkg" || cmd == "apt" || cmd == "apt-get") {
             handlePkgCommand(parts.drop(1))
             if (async) printPrompt()
             return true
@@ -1385,22 +1385,36 @@ class HvaShellEngine(
         writeToScreen("  \u001b[01;32mcat ${file.name}\u001b[00m               Afficher le contenu complet\r\n")
     }
 
+    private fun formatRepoDisplayUrl(url: String): String {
+        return when {
+            url.contains("raw.githubusercontent.com/Djeyby-stack/hva-packages") ->
+                "https://pkg.hva.stack/main (hva-packages)"
+            url.contains("raw.githubusercontent.com") -> {
+                val parts = url.replace("https://raw.githubusercontent.com/", "").split("/")
+                val user = parts.getOrNull(0) ?: "stack"
+                val repo = parts.getOrNull(1) ?: "packages"
+                "https://pkg.hva.stack/$user/$repo"
+            }
+            else -> url
+        }
+    }
+
     private fun handlePkgCommand(args: List<String>) {
         val action = args.firstOrNull() ?: "help"
         when (action) {
             "update", "up", "sync" -> {
-                writeToScreen("\u001b[01;34m[pkg]\u001b[00m Synchronisation avec les dépôts distants GitHub...\r\n")
+                writeToScreen("\u001b[01;34m[pkg]\u001b[00m Synchronisation avec les dépôts HVA Stack...\r\n")
                 val repos = pkgManager.getRepositories()
                 repos.forEachIndexed { idx, url ->
-                    writeToScreen("Get:${idx + 1} $url [index.json]\r\n")
+                    writeToScreen("Get:${idx + 1} ${formatRepoDisplayUrl(url)} [index.json]\r\n")
                 }
                 thread(name = "Hva-PkgSync", isDaemon = true) {
                     val res = pkgManager.syncRemoteRepo()
                     if (res.isSuccess) {
                         writeToScreen("Reading package lists... \u001b[01;32mDone\u001b[00m (${res.getOrDefault(0)} packages available)\r\n")
-                        writeToScreen("\u001b[01;32m[pkg]\u001b[00m Tous les index de dépôts GitHub sont à jour.\r\n")
+                        writeToScreen("\u001b[01;32m[pkg]\u001b[00m Tous les index de dépôts HVA Stack sont à jour.\r\n")
                     } else {
-                        writeToScreen("\u001b[01;31m[pkg]\u001b[00m Échec de synchronisation distante, utilisation du catalogue local.\r\n")
+                        writeToScreen("\u001b[01;31m[pkg]\u001b[00m Catalogue local actif.\r\n")
                     }
                     printPrompt()
                 }
@@ -1417,19 +1431,19 @@ class HvaShellEngine(
                 val sub = args.getOrNull(1) ?: "list"
                 when (sub) {
                     "list" -> {
-                        writeToScreen("\u001b[01;36mDépôts GitHub configurés :\u001b[00m\r\n")
+                        writeToScreen("\u001b[01;36mDépôts HVA Stack configurés :\u001b[00m\r\n")
                         pkgManager.getRepositories().forEach { r ->
-                            writeToScreen("  - $r\r\n")
+                            writeToScreen("  - ${formatRepoDisplayUrl(r)}\r\n")
                         }
                     }
                     "add" -> {
                         val url = args.getOrNull(2)
                         if (url.isNullOrBlank()) {
-                            writeToScreen("Usage: pkg repo add <url_github_json>\r\n")
+                            writeToScreen("Usage: pkg repo add <url_repository_json>\r\n")
                         } else {
                             val added = pkgManager.addRepository(url)
                             if (added) {
-                                writeToScreen("\u001b[01;32m[pkg]\u001b[00m Dépôt '$url' ajouté avec succès.\r\n")
+                                writeToScreen("\u001b[01;32m[pkg]\u001b[00m Dépôt '${formatRepoDisplayUrl(url)}' ajouté avec succès.\r\n")
                             } else {
                                 writeToScreen("Dépôt déjà existant ou invalide.\r\n")
                             }
@@ -1437,7 +1451,7 @@ class HvaShellEngine(
                     }
                     "reset" -> {
                         pkgManager.resetRepositories()
-                        writeToScreen("\u001b[01;32m[pkg]\u001b[00m Dépôts réinitialisés au miroir GitHub officiel HVA.\r\n")
+                        writeToScreen("\u001b[01;32m[pkg]\u001b[00m Dépôts réinitialisés au miroir officiel HVA Stack.\r\n")
                     }
                     else -> {
                         writeToScreen("Usage: pkg repo [list | add <url> | reset]\r\n")
@@ -1447,7 +1461,7 @@ class HvaShellEngine(
             "search" -> {
                 val query = args.getOrNull(1) ?: ""
                 val matches = pkgManager.search(query)
-                writeToScreen("\u001b[01;36mPaquets GitHub disponibles (${matches.size}) :\u001b[00m\r\n")
+                writeToScreen("\u001b[01;36mPaquets HVA disponibles (${matches.size}) :\u001b[00m\r\n")
                 matches.forEach { pkg ->
                     val status = if (pkgManager.isInstalled(pkg.name)) "\u001b[01;32m[installé]\u001b[00m" else ""
                     writeToScreen(String.format("  \u001b[01;33m%-15s\u001b[00m v%-8s - %s %s\r\n", pkg.name, pkg.version, pkg.description, status))
@@ -1467,7 +1481,7 @@ class HvaShellEngine(
                     return
                 }
                 targets.forEach { target ->
-                    writeToScreen("\u001b[01;34m[pkg]\u001b[00m Téléchargement et installation de '$target' depuis GitHub...\r\n")
+                    writeToScreen("\u001b[01;34m[pkg]\u001b[00m Téléchargement et installation de '$target' depuis HVA Stack...\r\n")
                     val result = pkgManager.install(target)
                     if (result.isSuccess) {
                         writeToScreen("\u001b[01;32m[pkg]\u001b[00m ${result.getOrNull()}\r\n")
@@ -1501,18 +1515,18 @@ class HvaShellEngine(
                     writeToScreen("Version: ${meta.version}\r\n")
                     writeToScreen("Architecture: ${Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"}\r\n")
                     writeToScreen("Description: ${meta.description}\r\n")
-                    writeToScreen("Download URL: ${meta.downloadUrl ?: "GitHub Engine Direct"}\r\n")
+                    writeToScreen("Repository: HVA Stack Mirror\r\n")
                     writeToScreen("Installed: ${if (pkgManager.isInstalled(meta.name)) "yes" else "no"}\r\n")
                 } else {
                     writeToScreen("Paquet '$target' non trouvé.\r\n")
                 }
             }
             else -> {
-                writeToScreen("\u001b[01;36mGestionnaire de paquets GitHub HVA (pkg v0.0.7)\u001b[00m\r\n")
-                writeToScreen("  pkg update                 Synchroniser les index distants GitHub\r\n")
-                writeToScreen("  pkg repo [list|add|reset]  Gérer les sources de dépôts GitHub\r\n")
+                writeToScreen("\u001b[01;36mGestionnaire de paquets HVA Stack (pkg v0.0.7)\u001b[00m\r\n")
+                writeToScreen("  pkg update                 Synchroniser les index de dépôts HVA\r\n")
+                writeToScreen("  pkg repo [list|add|reset]  Gérer les sources de dépôts HVA\r\n")
                 writeToScreen("  pkg search <requête>       Rechercher un binaire ou paquet\r\n")
-                writeToScreen("  pkg install <paquet>       Télécharger et installer un binaire GitHub\r\n")
+                writeToScreen("  pkg install <paquet>       Télécharger et installer un paquet HVA\r\n")
                 writeToScreen("  pkg list                   Afficher tous les paquets installés\r\n")
                 writeToScreen("  pkg remove <paquet>        Désinstaller un paquet\r\n")
                 writeToScreen("  pkg show <paquet>          Informations détaillées du paquet\r\n")
