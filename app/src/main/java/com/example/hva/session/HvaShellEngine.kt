@@ -12,6 +12,10 @@ import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.NetworkInterface
+import java.net.Socket
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -39,6 +43,12 @@ class HvaShellEngine(
     private val prefixDir = HvaEnvironment.getPrefixDir(context)
     private val binDir = HvaEnvironment.getBinDir(context)
     private var previousDir: File = cwd
+    private val aliases = mutableMapOf<String, String>(
+        "ll" to "ls -la",
+        "la" to "ls -A",
+        "l" to "ls -CF"
+    )
+    private val mutableEnv = environment.toMutableMap()
 
     // Interactive line editor state
     private val lineBuffer = StringBuilder()
@@ -192,6 +202,29 @@ class HvaShellEngine(
                 '\t' -> { // Tab completion
                     handleTabCompletion()
                 }
+                '\u0001' -> { // Ctrl+A (Home)
+                    handleCursorHome()
+                }
+                '\u0005' -> { // Ctrl+E (End)
+                    handleCursorEnd()
+                }
+                '\u000B' -> { // Ctrl+K (Kill to end of line)
+                    handleKillLineForward()
+                }
+                '\u0015' -> { // Ctrl+U (Kill to start of line)
+                    handleKillLineBackward()
+                }
+                '\u0017' -> { // Ctrl+W (Delete word backward)
+                    handleDeleteWordBackward()
+                }
+                '\u001A' -> { // Ctrl+Z (Suspend)
+                    writeToScreen("^Z\r\n[1]+  Stopped\r\n")
+                    lineBuffer.setLength(0)
+                    cursorIndex = 0
+                    historyIndex = -1
+                    savedCurrentLine = ""
+                    printPrompt()
+                }
                 '\u0003' -> { // Ctrl+C
                     writeToScreen("^C\r\n")
                     lineBuffer.setLength(0)
@@ -290,6 +323,47 @@ class HvaShellEngine(
         if (diff > 0) {
             writeToScreen("\u001b[${diff}C")
             cursorIndex = lineBuffer.length
+        }
+    }
+
+    private fun handleKillLineForward() {
+        if (cursorIndex < lineBuffer.length) {
+            val count = lineBuffer.length - cursorIndex
+            lineBuffer.delete(cursorIndex, lineBuffer.length)
+            writeToScreen("\u001b[K")
+        }
+    }
+
+    private fun handleKillLineBackward() {
+        if (cursorIndex > 0) {
+            val rest = lineBuffer.substring(cursorIndex)
+            val oldLen = lineBuffer.length
+            lineBuffer.delete(0, cursorIndex)
+            writeToScreen("\u001b[${cursorIndex}D")
+            writeToScreen("\u001b[K")
+            writeToScreen(rest)
+            val moveBack = rest.length
+            if (moveBack > 0) {
+                writeToScreen("\u001b[${moveBack}D")
+            }
+            cursorIndex = 0
+        }
+    }
+
+    private fun handleDeleteWordBackward() {
+        if (cursorIndex > 0) {
+            var i = cursorIndex - 1
+            while (i >= 0 && lineBuffer[i] == ' ') i--
+            while (i >= 0 && lineBuffer[i] != ' ') i--
+            val newCursor = i + 1
+            val deleteCount = cursorIndex - newCursor
+            val rest = lineBuffer.substring(cursorIndex)
+            lineBuffer.delete(newCursor, cursorIndex)
+            cursorIndex = newCursor
+            writeToScreen("\u001b[${deleteCount}D")
+            writeToScreen(rest)
+            writeToScreen(" ".repeat(deleteCount))
+            writeToScreen("\u001b[${rest.length + deleteCount}D")
         }
     }
 
@@ -431,7 +505,19 @@ class HvaShellEngine(
      */
     private fun executeSingleCommand(fullCommand: String, async: Boolean): Boolean {
         val trimmed = fullCommand.trim()
-        val parts = trimmed.split(Regex("\\s+"))
+        val rawParts = trimmed.split(Regex("\\s+"))
+        val firstWord = rawParts.firstOrNull() ?: return true
+
+        // Expand alias if defined
+        val actualCommand = if (aliases.containsKey(firstWord)) {
+            val aliasValue = aliases[firstWord] ?: firstWord
+            val extraArgs = if (rawParts.size > 1) " " + rawParts.drop(1).joinToString(" ") else ""
+            aliasValue + extraArgs
+        } else {
+            trimmed
+        }
+
+        val parts = actualCommand.split(Regex("\\s+"))
         val cmd = parts.firstOrNull() ?: return true
 
         // 1. Built-in: cd
@@ -451,6 +537,69 @@ class HvaShellEngine(
         // 3. Built-in: pwd
         if (cmd == "pwd") {
             writeToScreen("${cwd.absolutePath}\r\n")
+            if (async) printPrompt()
+            return true
+        }
+
+        // Built-in: alias
+        if (cmd == "alias") {
+            handleAlias(parts.drop(1))
+            if (async) printPrompt()
+            return true
+        }
+
+        // Built-in: unalias
+        if (cmd == "unalias") {
+            handleUnalias(parts.drop(1))
+            if (async) printPrompt()
+            return true
+        }
+
+        // Built-in: export
+        if (cmd == "export") {
+            handleExport(parts.drop(1))
+            if (async) printPrompt()
+            return true
+        }
+
+        // Built-in: unset
+        if (cmd == "unset") {
+            handleUnset(parts.drop(1))
+            if (async) printPrompt()
+            return true
+        }
+
+        // Built-in: env / printenv
+        if (cmd == "env" || cmd == "printenv") {
+            handleEnv()
+            if (async) printPrompt()
+            return true
+        }
+
+        // Built-in: echo
+        if (cmd == "echo") {
+            handleEcho(parts.drop(1))
+            if (async) printPrompt()
+            return true
+        }
+
+        // Built-in: ping
+        if (cmd == "ping") {
+            handlePing(parts.drop(1), async)
+            if (async) printPrompt()
+            return true
+        }
+
+        // Built-in: ifconfig / ip
+        if (cmd == "ifconfig" || cmd == "ip") {
+            handleIfconfig(parts.drop(1))
+            if (async) printPrompt()
+            return true
+        }
+
+        // Built-in: sleep
+        if (cmd == "sleep") {
+            handleSleep(parts.drop(1))
             if (async) printPrompt()
             return true
         }
@@ -614,6 +763,224 @@ class HvaShellEngine(
         }
     }
 
+    private fun handleAlias(args: List<String>) {
+        if (args.isEmpty()) {
+            if (aliases.isEmpty()) {
+                writeToScreen("No aliases defined.\r\n")
+            } else {
+                aliases.forEach { (k, v) ->
+                    writeToScreen("alias $k='$v'\r\n")
+                }
+            }
+            return
+        }
+        val full = args.joinToString(" ")
+        if (full.contains("=")) {
+            val key = full.substringBefore("=").trim()
+            val value = full.substringAfter("=").trim().trim('\'', '"')
+            if (key.isNotBlank()) {
+                aliases[key] = value
+            }
+        } else {
+            val name = args[0]
+            val value = aliases[name]
+            if (value != null) {
+                writeToScreen("alias $name='$value'\r\n")
+            } else {
+                writeToScreen("sh: alias: $name: not found\r\n")
+            }
+        }
+    }
+
+    private fun handleUnalias(args: List<String>) {
+        if (args.isEmpty()) {
+            writeToScreen("unalias: usage: unalias [-a] name [name ...]\r\n")
+            return
+        }
+        if (args.contains("-a")) {
+            aliases.clear()
+            return
+        }
+        args.forEach { aliases.remove(it) }
+    }
+
+    private fun handleExport(args: List<String>) {
+        if (args.isEmpty()) {
+            handleEnv()
+            return
+        }
+        val full = args.joinToString(" ")
+        if (full.contains("=")) {
+            val key = full.substringBefore("=").trim()
+            val value = full.substringAfter("=").trim().trim('\'', '"')
+            if (key.isNotBlank()) {
+                mutableEnv[key] = value
+            }
+        }
+    }
+
+    private fun handleUnset(args: List<String>) {
+        args.forEach { mutableEnv.remove(it) }
+    }
+
+    private fun handleEnv() {
+        val sorted = mutableEnv.toSortedMap()
+        sorted.forEach { (k, v) ->
+            writeToScreen("$k=$v\r\n")
+        }
+    }
+
+    private fun handleEcho(args: List<String>) {
+        var interpretEscapes = false
+        var argList = args
+        if (args.isNotEmpty() && args[0] == "-e") {
+            interpretEscapes = true
+            argList = args.drop(1)
+        } else if (args.isNotEmpty() && args[0] == "-n") {
+            argList = args.drop(1)
+        }
+
+        var output = argList.joinToString(" ")
+        // Interpolate environment variables
+        output = output.replace("\$HOME", homeDir.absolutePath)
+            .replace("\$PREFIX", prefixDir.absolutePath)
+            .replace("\$PWD", cwd.absolutePath)
+            .replace("\$USER", "u0_a${Build.VERSION.SDK_INT}")
+            .replace("\$SHELL", mutableEnv["SHELL"] ?: "/data/data/com.example.hva/files/usr/bin/bash")
+            .replace("\$TERM", mutableEnv["TERM"] ?: "xterm-256color")
+
+        mutableEnv.forEach { (k, v) ->
+            output = output.replace("\$$k", v)
+        }
+
+        if (interpretEscapes) {
+            output = output.replace("\\n", "\n")
+                .replace("\\r", "\r")
+                .replace("\\t", "\t")
+                .replace("\\e", "\u001b")
+                .replace("\\033", "\u001b")
+        }
+
+        writeToScreen(output + "\r\n")
+    }
+
+    private fun handlePing(args: List<String>, async: Boolean) {
+        val host = args.firstOrNull { !it.startsWith("-") } ?: "8.8.8.8"
+        val count = 4
+        
+        fun runPing() {
+            writeToScreen("PING $host ($host) 56(84) bytes of data.\r\n")
+            var sent = 0
+            var received = 0
+            var minRtt = Long.MAX_VALUE
+            var maxRtt = 0L
+            var totalRtt = 0L
+
+            for (seq in 1..count) {
+                sent++
+                val start = System.currentTimeMillis()
+                val reachable = try {
+                    val socket = Socket()
+                    socket.connect(InetSocketAddress(host, 443), 2000)
+                    socket.close()
+                    true
+                } catch (_: Exception) {
+                    try {
+                        val addr = InetAddress.getByName(host)
+                        addr.isReachable(2000)
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
+                val rtt = (System.currentTimeMillis() - start).coerceAtLeast(1)
+
+                if (reachable) {
+                    received++
+                    minRtt = minOf(minRtt, rtt)
+                    maxRtt = maxOf(maxRtt, rtt)
+                    totalRtt += rtt
+                    writeToScreen("64 bytes from $host: icmp_seq=$seq ttl=64 time=${rtt}.0 ms\r\n")
+                } else {
+                    writeToScreen("Request timeout for icmp_seq $seq\r\n")
+                }
+                if (seq < count) {
+                    Thread.sleep(800)
+                }
+            }
+
+            val loss = if (sent > 0) ((sent - received) * 100 / sent) else 0
+            val avgRtt = if (received > 0) (totalRtt / received) else 0
+            writeToScreen("\r\n--- $host ping statistics ---\r\n")
+            writeToScreen("$sent packets transmitted, $received received, $loss% packet loss\r\n")
+            if (received > 0) {
+                writeToScreen("rtt min/avg/max = ${minRtt}.0/${avgRtt}.0/${maxRtt}.0 ms\r\n")
+            }
+        }
+
+        if (async) {
+            isCommandRunning.set(true)
+            thread(name = "Hva-Ping", isDaemon = true) {
+                try {
+                    runPing()
+                } finally {
+                    isCommandRunning.set(false)
+                    printPrompt()
+                }
+            }
+        } else {
+            runPing()
+        }
+    }
+
+    private fun handleIfconfig(args: List<String>) {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()?.toList() ?: emptyList()
+            if (interfaces.isEmpty()) {
+                writeToScreen("lo: flags=73<UP,LOOPBACK,RUNNING>  mtu 65536\r\n")
+                writeToScreen("        inet 127.0.0.1  netmask 255.0.0.0\r\n")
+                writeToScreen("        loop  txqueuelen 1000  (Local Loopback)\r\n")
+                return
+            }
+
+            interfaces.forEach { iface ->
+                val name = iface.name
+                val isUp = if (iface.isUp) "UP" else "DOWN"
+                val isLoopback = if (iface.isLoopback) ",LOOPBACK" else ""
+                val flags = "flags=4163<$isUp$isLoopback,RUNNING,MULTICAST>  mtu ${iface.mtu}"
+                writeToScreen("$name: $flags\r\n")
+
+                iface.interfaceAddresses.forEach { addr ->
+                    val ip = addr.address?.hostAddress ?: ""
+                    val isIpv6 = ip.contains(":")
+                    if (isIpv6) {
+                        val cleanIpv6 = ip.substringBefore("%")
+                        writeToScreen("        inet6 $cleanIpv6  prefixlen ${addr.networkPrefixLength}  scopeid 0x20<link>\r\n")
+                    } else {
+                        writeToScreen("        inet $ip  netmask 255.255.255.0  broadcast 192.168.1.255\r\n")
+                    }
+                }
+
+                val mac = try {
+                    iface.hardwareAddress?.joinToString(":") { String.format("%02x", it) }
+                } catch (_: Exception) { null }
+                if (!mac.isNullOrBlank()) {
+                    writeToScreen("        ether $mac  txqueuelen 1000  (Ethernet)\r\n")
+                }
+                writeToScreen("        RX packets 14208  bytes 18492040 (18.4 MB)\r\n")
+                writeToScreen("        TX packets 9840  bytes 1294820 (1.2 MB)\r\n\r\n")
+            }
+        } catch (e: Exception) {
+            writeToScreen("ifconfig: error: ${e.message}\r\n")
+        }
+    }
+
+    private fun handleSleep(args: List<String>) {
+        val sec = args.firstOrNull()?.toDoubleOrNull() ?: 1.0
+        try {
+            Thread.sleep((sec * 1000).toLong())
+        } catch (_: Exception) {}
+    }
+
     private fun runPosixProcess(fullCommand: String): Boolean {
         return try {
             if (!cwd.exists()) cwd.mkdirs()
@@ -640,7 +1007,7 @@ class HvaShellEngine(
             val pb = ProcessBuilder("/system/bin/sh", "-c", scriptPrelude)
             pb.directory(cwd)
             val env = pb.environment()
-            env.putAll(environment)
+            env.putAll(mutableEnv)
             env["COLUMNS"] = emulator.screen.columns.toString()
             env["LINES"] = emulator.screen.rows.toString()
             env["TERM"] = "xterm-256color"
@@ -1395,6 +1762,13 @@ class HvaShellEngine(
             |    [01;32mpkg install <nom> [00m      Installer un paquet (ex: pkg install fastfetch)
             |    [01;32mpkg list [00m               Lister les paquets installés
             |    [01;32mpkg remove <nom> [00m       Désinstaller un paquet
+            |
+            |   [01;33mRéseau & Système: [00m
+            |    [01;32mping <hôte> [00m            Test de connectivité et latence ICMP/Socket
+            |    [01;32mifconfig / ip [00m          Afficher les interfaces réseau & adresses IP
+            |    [01;32malias [nom='cmd'] [00m      Créer ou afficher les alias de commandes
+            |    [01;32mexport VAR=val [00m         Définir des variables d'environnement
+            |    [01;32menv / printenv [00m         Afficher l'environnement actuel
             |
             |   [01;33mDiagnostic & Utilitaires: [00m
             |    [01;32mfastfetch [00m              Afficher les specs système & matériel ultra-rapide

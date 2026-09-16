@@ -55,6 +55,9 @@ class TerminalView @JvmOverloads constructor(
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = Typeface.MONOSPACE
         textSize = fontSizePx
+        isSubpixelText = true
+        isLinearText = true
+        hinting = Paint.HINTING_ON
     }
     private val bgPaint = Paint()
     private val cursorPaint = Paint()
@@ -90,6 +93,7 @@ class TerminalView @JvmOverloads constructor(
     // Gestures
     private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
+            if (isSelecting) return false
             val deltaLines = (distanceY / charHeight).toInt()
             if (deltaLines != 0) {
                 val maxScroll = session?.emulator?.screen?.getScrollbackSize() ?: 0
@@ -108,17 +112,51 @@ class TerminalView @JvmOverloads constructor(
             return true
         }
 
+        override fun onDoubleTap(e: MotionEvent): Boolean {
+            val s = session ?: return false
+            val screen = s.emulator.screen
+            val col = (e.x / charWidth).toInt().coerceIn(0, screen.columns - 1)
+            val row = (e.y / charHeight).toInt().coerceIn(0, screen.rows - 1)
+            val line = screen.getLineAt(row, scrollOffset) ?: return false
+
+            if (col < line.chars.size && line.chars[col] != ' ') {
+                var startCol = col
+                while (startCol > 0 && line.chars[startCol - 1] != ' ' && !isDelimiter(line.chars[startCol - 1])) {
+                    startCol--
+                }
+                var endCol = col
+                while (endCol < screen.columns - 1 && line.chars[endCol + 1] != ' ' && !isDelimiter(line.chars[endCol + 1])) {
+                    endCol++
+                }
+                isSelecting = true
+                selStartRow = row
+                selEndRow = row
+                selStartCol = startCol
+                selEndCol = endCol
+                performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                invalidate()
+                return true
+            }
+            return false
+        }
+
         override fun onLongPress(e: MotionEvent) {
-            val col = (e.x / charWidth).toInt().coerceAtLeast(0)
-            val row = (e.y / charHeight).toInt().coerceAtLeast(0)
+            val s = session ?: return
+            val col = (e.x / charWidth).toInt().coerceIn(0, (s.emulator.screen.columns - 1).coerceAtLeast(0))
+            val row = (e.y / charHeight).toInt().coerceIn(0, (s.emulator.screen.rows - 1).coerceAtLeast(0))
             isSelecting = true
             selStartCol = col
             selStartRow = row
             selEndCol = col
             selEndRow = row
+            performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
             invalidate()
         }
     })
+
+    private fun isDelimiter(ch: Char): Boolean {
+        return ch in " \t\r\n`~!@#$%^&*()=+[{]}\\|;:'\",<>/?\""
+    }
 
     private val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
         override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -294,6 +332,11 @@ class TerminalView @JvmOverloads constructor(
                 }
             }
 
+            // Schedule continuous blink update if blink is enabled
+            if (cursorBlinkEnabled && scrollOffset == 0) {
+                postInvalidateDelayed(500)
+            }
+
         } finally {
             screen.lock.unlock()
         }
@@ -339,6 +382,21 @@ class TerminalView @JvmOverloads constructor(
     override fun onTouchEvent(event: MotionEvent): Boolean {
         scaleDetector.onTouchEvent(event)
         gestureDetector.onTouchEvent(event)
+
+        if (isSelecting && event.pointerCount == 1) {
+            when (event.action) {
+                MotionEvent.ACTION_MOVE -> {
+                    val s = session ?: return true
+                    val col = (event.x / charWidth).toInt().coerceIn(0, s.emulator.screen.columns - 1)
+                    val row = (event.y / charHeight).toInt().coerceIn(0, s.emulator.screen.rows - 1)
+                    if (col != selEndCol || row != selEndRow) {
+                        selEndCol = col
+                        selEndRow = row
+                        invalidate()
+                    }
+                }
+            }
+        }
         return true
     }
 
@@ -447,15 +505,27 @@ class TerminalView @JvmOverloads constructor(
     }
 
     fun copySelection(): String? {
-        if (!isSelecting) return null
-        val text = session?.emulator?.screen?.getSelectedText(
-            selStartRow, selStartCol,
-            selEndRow, selEndCol,
-            scrollOffset
-        )
+        val s = session ?: return null
+        val text = if (isSelecting) {
+            s.emulator.screen.getSelectedText(
+                selStartRow, selStartCol,
+                selEndRow, selEndCol,
+                scrollOffset
+            )
+        } else {
+            // If no active selection, copy the active visible screen
+            s.emulator.screen.getSelectedText(
+                0, 0,
+                s.emulator.screen.rows - 1, s.emulator.screen.columns - 1,
+                scrollOffset
+            )
+        }
+
         if (!text.isNullOrEmpty()) {
             val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             cm?.setPrimaryClip(android.content.ClipData.newPlainText("Hva Terminal", text))
+            val preview = text.trim().replace("\n", " ").take(30)
+            android.widget.Toast.makeText(context, "Copié : \"$preview...\"", android.widget.Toast.LENGTH_SHORT).show()
         }
         isSelecting = false
         invalidate()
