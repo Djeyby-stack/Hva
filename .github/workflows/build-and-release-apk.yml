@@ -43,14 +43,23 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Accept Android SDK Licenses & Set Environment
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          mkdir -p ~/.android
+          touch ~/.android/repositories.cfg
+          if [ -d "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" ]; then
+            yes | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          fi
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
 
       - name: Prepare Keystore & Environment
         run: |
-          mkdir -p ~/.android
           if [ -f debug.keystore.base64 ]; then
             base64 -d debug.keystore.base64 > ~/.android/debug.keystore || true
           fi
@@ -58,24 +67,11 @@ jobs:
             cp .env.example .env || true
           fi
 
-      - name: Grant execute permission for Gradle Wrapper
-        run: |
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-          else
-            gradle wrapper --gradle-version 9.3.1
-            chmod +x gradlew
-          fi
-
       - name: Build Debug APK
         run: |
-          if [ -f gradlew ]; then
-            ./gradlew assembleDebug --stacktrace --no-daemon
-          else
-            gradle assembleDebug --stacktrace --no-daemon
-          fi
+          gradle assembleDebug --stacktrace --no-daemon
 
-      - name: Locate & Rename APK
+      - name: Locate & Prepare APK
         run: |
           mkdir -p build-artifacts
           APK_FILE=$(find app/build/outputs/apk/debug -name "*.apk" -type f | head -n 1)
