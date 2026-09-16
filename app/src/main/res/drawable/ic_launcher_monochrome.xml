@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Geometric Termux Chevron '>' -->
+    <path
+        android:pathData="M33,35 L40,35 L57,54 L40,73 L33,73 L50,54 Z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Terminal Cursor Underscore '_' -->
+    <path
+        android:pathData="M56,67 L75,67 L75,73 L56,73 Z"
+        android:fillColor="#FFFFFF" />
+</vector>

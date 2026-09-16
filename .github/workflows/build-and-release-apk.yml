@@ -1,0 +1,124 @@
+name: Build & Release Android Debug APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a GitHub Release with this APK'
+        required: false
+        type: boolean
+        default: true
+      release_tag:
+        description: 'Release Tag (e.g., v1.0.0)'
+        required: false
+        type: string
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Prepare Keystore & Environment
+        run: |
+          mkdir -p ~/.android
+          if [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > ~/.android/debug.keystore || true
+          fi
+          if [ -f .env.example ] && [ ! -f .env ]; then
+            cp .env.example .env || true
+          fi
+
+      - name: Grant execute permission for Gradle Wrapper
+        run: |
+          if [ -f gradlew ]; then
+            chmod +x gradlew
+          else
+            gradle wrapper --gradle-version 9.3.1
+            chmod +x gradlew
+          fi
+
+      - name: Build Debug APK
+        run: |
+          if [ -f gradlew ]; then
+            ./gradlew assembleDebug --stacktrace --no-daemon
+          else
+            gradle assembleDebug --stacktrace --no-daemon
+          fi
+
+      - name: Locate & Rename APK
+        run: |
+          mkdir -p build-artifacts
+          APK_FILE=$(find app/build/outputs/apk/debug -name "*.apk" -type f | head -n 1)
+          if [ -f "$APK_FILE" ]; then
+            echo "Found APK at $APK_FILE"
+            cp "$APK_FILE" build-artifacts/Hva-debug.apk
+            cp "$APK_FILE" build-artifacts/app-debug.apk
+          else
+            echo "ERROR: APK not found in build outputs!"
+            exit 1
+          fi
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hva-Debug-APK
+          path: build-artifacts/*.apk
+          retention-days: 30
+
+      - name: Determine Release Eligibility
+        id: release_check
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "is_release=true" >> $GITHUB_OUTPUT
+            echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.create_release }}" == "true" ]]; then
+            echo "is_release=true" >> $GITHUB_OUTPUT
+            echo "tag_name=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create GitHub Release and Upload APK
+        if: steps.release_check.outputs.is_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_check.outputs.tag_name }}
+          name: "Release ${{ steps.release_check.outputs.tag_name }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            build-artifacts/Hva-debug.apk
+            build-artifacts/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

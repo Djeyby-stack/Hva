@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">Hva</string>
+    <string name="session_default_title">Session</string>
+    <string name="action_new_session">Nouvelle session</string>
+    <string name="action_close_session">Fermer la session</string>
+    <string name="action_settings">Paramètres</string>
+    <string name="action_clear">Effacer l\'écran</string>
+    <string name="action_reset">Réinitialiser le terminal</string>
+    <string name="process_exited">Processus terminé (code %1$d)</string>
+    <string name="copy_text">Copier</string>
+    <string name="paste_text">Coller</string>
+    <string name="select_all">Tout sélectionner</string>
+    <string name="extra_keys_desc">Barre de touches rapides</string>
+</resources>
