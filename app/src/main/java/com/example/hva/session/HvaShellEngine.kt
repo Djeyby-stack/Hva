@@ -1537,14 +1537,15 @@ class HvaShellEngine(
                 }
             }
             else -> {
-                writeToScreen("\u001b[01;36mGestionnaire de paquets HVA Stack (pkg v0.0.7)\u001b[00m\r\n")
-                writeToScreen("  pkg update                 Synchroniser les index de dépôts HVA\r\n")
-                writeToScreen("  pkg repo [list|add|reset]  Gérer les sources de dépôts HVA\r\n")
-                writeToScreen("  pkg search <requête>       Rechercher un binaire ou paquet\r\n")
+                writeToScreen("\u001b[01;36mGestionnaire de paquets HVA Stack (pkg v${HvaEnvironment.VERSION})\u001b[00m\r\n")
+                writeToScreen("  pkg update                 Synchroniser les index de dépôts HVA Stack\r\n")
+                writeToScreen("  pkg upgrade                Mettre à jour tous les paquets installés\r\n")
+                writeToScreen("  pkg search <requête>       Rechercher un binaire ou un paquet dans les dépôts\r\n")
                 writeToScreen("  pkg install <paquet>       Télécharger et installer un paquet HVA\r\n")
                 writeToScreen("  pkg list                   Afficher tous les paquets installés\r\n")
                 writeToScreen("  pkg remove <paquet>        Désinstaller un paquet\r\n")
                 writeToScreen("  pkg show <paquet>          Informations détaillées du paquet\r\n")
+                writeToScreen("  pkg repo [list|add|reset]  Gérer les sources de dépôts HVA Stack\r\n")
             }
         }
         return false
@@ -1660,42 +1661,42 @@ class HvaShellEngine(
 
     private fun displayHelp() {
         val help = """
-            | [01;36m═════════════════════════════════════════════════════════ [00m
-            |  [01;32mHva Terminal v${HvaEnvironment.VERSION} — Guide des commandes [00m
-            | [01;36m═════════════════════════════════════════════════════════ [00m
-            |   [01;33mGestionnaire de Paquets: [00m
-            |    [01;32mpkg update [00m             Mettre à jour les métadonnées de paquets
-            |    [01;32mpkg upgrade [00m            Mettre à niveau tous les paquets installés
-            |    [01;32mpkg search <requête> [00m   Rechercher des paquets disponibles
-            |    [01;32mpkg install <nom> [00m      Installer un paquet (ex: pkg install fastfetch)
-            |    [01;32mpkg list [00m               Lister les paquets installés
-            |    [01;32mpkg remove <nom> [00m       Désinstaller un paquet
+            | \u001b[01;36m═════════════════════════════════════════════════════════\u001b[00m
+            |  \u001b[01;32mHVA Terminal v${HvaEnvironment.VERSION} — Manuel & User Guide\u001b[00m
+            | \u001b[01;36m═════════════════════════════════════════════════════════\u001b[00m
+            |   \u001b[01;33mDépôts & Paquets (HVA Stack):\u001b[00m
+            |    \u001b[01;32mpkg update\u001b[00m             Mettre à jour les index de dépôts HVA Stack
+            |    \u001b[01;32mpkg upgrade\u001b[00m            Mettre à niveau tous les paquets installés
+            |    \u001b[01;32mpkg search <requête>\u001b[00m   Rechercher des paquets officiels
+            |    \u001b[01;32mpkg install <nom>\u001b[00m      Installer un outil (micro, vim, python, etc.)
+            |    \u001b[01;32mpkg list\u001b[00m               Lister tous les paquets installés
+            |    \u001b[01;32mpkg show <nom>\u001b[00m         Afficher la fiche détaillée d'un paquet
+            |    \u001b[01;32mpkg remove <nom>\u001b[00m       Désinstaller un paquet
             |
-            |   [01;33mRéseau & Système: [00m
-            |    [01;32mping <hôte> [00m            Test de connectivité et latence ICMP/Socket
-            |    [01;32mifconfig / ip [00m          Afficher les interfaces réseau & adresses IP
-            |    [01;32malias [nom='cmd'] [00m      Créer ou afficher les alias de commandes
-            |    [01;32mexport VAR=val [00m         Définir des variables d'environnement
-            |    [01;32menv / printenv [00m         Afficher l'environnement actuel
+            |   \u001b[01;33mÉdition de Texte & Code:\u001b[00m
+            |    \u001b[01;32mmicro <fichier>\u001b[00m        Éditeur moderne avec coloration et souris
+            |    \u001b[01;32mnano <fichier>\u001b[00m         Éditeur léger standard UNIX
+            |    \u001b[01;32mvim <fichier>\u001b[00m          Éditeur modale puissant Vi IMproved
             |
-            |   [01;33mDiagnostic & Utilitaires: [00m
-            |    [01;32mfastfetch [00m              Afficher les specs système & matériel ultra-rapide
-            |    [01;32mneofetch [00m               Afficher les specs système & ASCII art
-            |    [01;32mhva doctor [00m             Diagnostic complet du matériel & OS Android
-            |    [01;32mcmatrix [00m                Pluie de caractères verts Matrix
-            |    [01;32msl [00m                     Locomotive à vapeur ASCII
-            |    [01;32mcowsay <texte> [00m         Vache ASCII parlante
-            |    [01;32mfiglet <texte> [00m         Bannières ASCII art en grands caractères
-            |    [01;32mfortune [00m                Citations célèbres
-            |    [01;32mcal [00m                    Calendrier mensuel interactif
-            |    [01;32mbc <calcul> [00m            Calculatrice arithmétique
-            |    [01;32mwhich <nom> [00m            Localiser un exécutable
-            |    [01;32mtree [00m                   Arborescence des fichiers
-            |    [01;32mcurl <url> / wget [00m      Télécharger ou consulter une page web
-            |    [01;32mpython -c "<code>" [00m     Calculatrice & évaluation Python
-            |    [01;32mclear / cls [00m            Effacer l'écran du terminal
-            |    [01;32mhistory [00m                Historique des commandes
-            |    [01;32mexit [00m                   Fermer la session active
+            |   \u001b[01;33mRéseau & Système:\u001b[00m
+            |    \u001b[01;32mping <hôte>\u001b[00m            Test de connectivité et latence ICMP/Socket
+            |    \u001b[01;32mifconfig / ip\u001b[00m          Afficher les interfaces réseau & adresses IP
+            |    \u001b[01;32mcurl <url> / wget\u001b[00m      Télécharger ou effectuer des requêtes web
+            |    \u001b[01;32malias [nom='cmd']\u001b[00m      Créer ou afficher les alias de commandes
+            |    \u001b[01;32mexport VAR=val\u001b[00m         Définir des variables d'environnement
+            |    \u001b[01;32menv / printenv\u001b[00m         Afficher l'environnement actuel
+            |
+            |   \u001b[01;33mDiagnostic & Utilitaires:\u001b[00m
+            |    \u001b[01;32mfastfetch / neofetch\u001b[00m   Specs système et affichage du logo HVA
+            |    \u001b[01;32mhva doctor\u001b[00m             Diagnostic complet du matériel & OS Android
+            |    \u001b[01;32mpython / python3\u001b[00m       Interpréteur interactif Python 3.11
+            |    \u001b[01;32mtree <dossier>\u001b[00m         Arborescence visuelle des fichiers
+            |    \u001b[01;32mcmatrix / sl\u001b[00m           Pluie Matrix / Locomotive à vapeur ASCII
+            |    \u001b[01;32mcowsay / figlet\u001b[00m        Vache parlante / Bannières ASCII
+            |    \u001b[01;32mcal / bc / which\u001b[00m       Calendrier / Calculatrice / Localisation binaires
+            |    \u001b[01;32mclear / cls\u001b[00m            Effacer l'écran du terminal
+            |    \u001b[01;32mhistory\u001b[00m                Historique des commandes
+            |    \u001b[01;32mexit / logout\u001b[00m          Fermer la session active
             |
         """.trimMargin()
         writeToScreen(help.replace("\n", "\r\n"))

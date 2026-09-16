@@ -81,15 +81,18 @@ object HvaEnvironment {
             |alias apt-get='hva pkg'
             |
             |# Welcome banner (HVA Terminal v0.0.8)
-            |printf '\033[01;36mWelcome to Hva Terminal v0.0.8!\033[00m\n\n'
-            |printf 'Docs:       https://github.com/Djeyby-stack/Hva\n'
-            |printf 'Community:  https://github.com/Djeyby-stack/Hva/issues\n\n'
-            |printf 'Working with packages:\n\n'
-            |printf ' - Search:  pkg search <query>\n'
-            |printf ' - Install: pkg install <package>\n'
-            |printf ' - Upgrade: pkg update && pkg upgrade\n'
-            |printf ' - Doctor:  hva doctor\n'
-            |printf ' - System:  fastfetch | neofetch\n\n'
+            |printf '\033[01;36m═════════════════════════════════════════════════════════\033[00m\n'
+            |printf '\033[01;32m  Welcome to Hva Terminal v0.0.8 (HVA Stack Ecosystem)\033[00m\n'
+            |printf '\033[01;36m═════════════════════════════════════════════════════════\033[00m\n\n'
+            |printf '  Docs:       https://github.com/Djeyby-stack/Hva\n'
+            |printf '  Ecosystem:  HVA Stack Remote Package Repository & Bionic Engine\n\n'
+            |printf '\033[01;33mHVA Stack Package Manager (pkg / apt):\033[00m\n'
+            |printf '  • Update index:    pkg update\n'
+            |printf '  • Search packages:  pkg search <query>\n'
+            |printf '  • Install tools:    pkg install <micro|vim|python|fastfetch...>\n'
+            |printf '  • Upgrade system:   pkg upgrade\n'
+            |printf '  • System Doctor:    hva doctor\n'
+            |printf '  • System Info:      fastfetch  |  neofetch\n\n'
             """.trimMargin()
         )
         profileFile.setReadable(true, true)
@@ -227,5 +230,30 @@ object HvaEnvironment {
         )
         neofetchScript.setExecutable(true, false)
         neofetchScript.setReadable(true, false)
+
+        // Install hva-sync-repo script into $PREFIX/bin/hva-sync-repo
+        val syncRepoScript = File(bin, "hva-sync-repo")
+        syncRepoScript.writeText(
+            """
+            |#!/system/bin/sh
+            |# HVA Stack - Official Termux & Bionic Repository Package Metadata Sync Engine
+            |export PREFIX="${'$'}{PREFIX:-$prefix}"
+            |export HOME="${'$'}{HOME:-$home}"
+            |CACHE_DIR="${'$'}PREFIX/var/cache/hva-pkg"
+            |INDEX_FILE="${'$'}CACHE_DIR/packages.json"
+            |
+            |mkdir -p "${'$'}CACHE_DIR"
+            |
+            |printf "\033[01;36m[HVA Repository Sync Engine]\033[00m Initializing metadata retrieval...\n"
+            |printf "Target Mirrors:\n"
+            |printf "  • Termux Main    : https://packages.termux.dev/apt/termux-main\n"
+            |printf "  • HVA Stack Repo : https://raw.githubusercontent.com/Djeyby-stack/Hva/main/packages.json\n\n"
+            |printf "\033[01;32m[*] Synchronizing package metadata catalog into local cache...\033[00m\n"
+            |
+            |exec hva pkg update
+            """.trimMargin()
+        )
+        syncRepoScript.setExecutable(true, false)
+        syncRepoScript.setReadable(true, false)
     }
 }

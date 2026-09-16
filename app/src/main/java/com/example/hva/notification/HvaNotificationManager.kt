@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import com.example.R
 import com.example.MainActivity
 import com.example.hva.runtime.HvaEnvironment
 
@@ -76,7 +77,7 @@ object HvaNotificationManager {
         }
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_agenda)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Hva Terminal")
             .setContentText(subtitle)
             .setSubText("v${HvaEnvironment.VERSION}")
