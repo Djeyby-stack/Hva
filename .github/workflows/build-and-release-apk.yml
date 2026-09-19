@@ -34,17 +34,20 @@ jobs:
     name: Build Debug APK
     runs-on: ubuntu-latest
 
+    env:
+      GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx3072m -Dorg.gradle.daemon=false"
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Set up Android SDK & Accept Licenses
         run: |
@@ -80,11 +83,11 @@ jobs:
 
       - name: Run Impitoyable Unit Tests & Validation
         run: |
-          gradle testDebugUnitTest --stacktrace --no-daemon --no-configuration-cache
+          gradle :app:testDebugUnitTest --stacktrace --no-daemon --no-configuration-cache
 
       - name: Build Standalone Debug APK
         run: |
-          gradle assembleDebug --stacktrace --no-daemon --no-configuration-cache
+          gradle :app:assembleDebug --stacktrace --no-daemon --no-configuration-cache
 
       - name: Locate & Prepare APK
         run: |

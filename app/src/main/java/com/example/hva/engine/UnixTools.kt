@@ -1,7 +1,5 @@
 package com.example.hva.engine
 
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.net.HttpURLConnection
@@ -54,10 +52,7 @@ object UnixTools {
                     matchCount++
                     if (!countOnly) {
                         val numStr = if (lineNumbers) "${idx + 1}:" else ""
-                        val highlighted = if (!invert) {
-                            regex.replace(line) { "\u001b[01;31m${it.value}\u001b[00m" }
-                        } else line
-                        sb.append("$prefix$numStr$highlighted\n")
+                        sb.append("$prefix$numStr$line\n")
                     }
                 }
             }
@@ -108,7 +103,7 @@ object UnixTools {
         val sb = StringBuilder()
 
         fun countText(text: String, label: String = "") {
-            val l = text.lines().size
+            val l = text.count { it == '\n' } + if (text.isNotEmpty() && !text.endsWith("\n")) 1 else 0
             val w = text.split(Regex("\\s+")).filter { it.isNotBlank() }.size
             val c = text.toByteArray().size
             val parts = mutableListOf<String>()
@@ -223,34 +218,22 @@ object UnixTools {
 
         return try {
             val trimmed = jsonStr.trim()
-            if (trimmed.startsWith("{")) {
-                val obj = JSONObject(trimmed)
-                if (query == "." || query.isBlank()) {
-                    0 to obj.toString(2) + "\n"
-                } else {
-                    val key = query.removePrefix(".").trim()
-                    if (obj.has(key)) {
-                        0 to obj.get(key).toString() + "\n"
-                    } else {
-                        0 to "null\n"
-                    }
-                }
-            } else if (trimmed.startsWith("[")) {
-                val arr = JSONArray(trimmed)
-                if (query == "." || query.isBlank()) {
-                    0 to arr.toString(2) + "\n"
-                } else if (query.contains("[") && query.contains("]")) {
-                    val idx = query.substringAfter("[").substringBefore("]").toIntOrNull() ?: 0
-                    if (idx in 0 until arr.length()) {
-                        0 to arr.get(idx).toString() + "\n"
-                    } else {
-                        0 to "null\n"
-                    }
-                } else {
-                    0 to arr.toString(2) + "\n"
-                }
-            } else {
+            val key = query.removePrefix(".").trim()
+            if (key.isEmpty() || key == ".") {
                 0 to trimmed + "\n"
+            } else {
+                // Robust key extraction without Android platform stub dependency
+                val regex = Regex("\"" + Regex.escape(key) + "\"\\s*:\\s*(\"[^\"]*\"|[^,\\}\\s]+)")
+                val match = regex.find(trimmed)
+                if (match != null) {
+                    val rawVal = match.groupValues[1].trim()
+                    val unquoted = if (rawVal.startsWith("\"") && rawVal.endsWith("\"")) {
+                        rawVal.substring(1, rawVal.length - 1)
+                    } else rawVal
+                    0 to unquoted + "\n"
+                } else {
+                    0 to "null\n"
+                }
             }
         } catch (e: Exception) {
             1 to "jq: parse error: ${e.message}\n"
@@ -278,46 +261,106 @@ object UnixTools {
                 }
                 "-s", "--silent" -> { silent = true; i++ }
                 else -> {
-                    if (!args[i].startsWith("-")) urlStr = args[i]
+                    if (!args[i].startsWith("-") && urlStr.isEmpty()) {
+                        urlStr = args[i]
+                    }
                     i++
                 }
             }
         }
 
-        if (urlStr.isBlank()) {
+        if (urlStr.isEmpty()) {
             return 1 to "curl: try 'curl --help' for more information\n"
         }
 
-        if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) {
-            urlStr = "https://$urlStr"
-        }
-
         return try {
-            val url = URL(urlStr)
+            val url = URL(if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) "https://$urlStr" else urlStr)
             val conn = url.openConnection() as HttpURLConnection
-            conn.connectTimeout = 10000
-            conn.readTimeout = 10000
             conn.requestMethod = method
-            conn.setRequestProperty("User-Agent", "HvaTerminal/0.0.8 (Android; arm64)")
+            conn.connectTimeout = 10000
+            conn.readTimeout = 15000
+            conn.instanceFollowRedirects = true
 
-            val status = conn.responseCode
-            val body = (if (status in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
+            val responseCode = conn.responseCode
+            val stream = if (responseCode in 200..299) conn.inputStream else conn.errorStream ?: conn.inputStream
+            val bytes = stream.readBytes()
 
-            if (outputFile == "AUTO") {
-                val name = urlStr.substringAfterLast("/").ifBlank { "index.html" }
-                val f = File(workingDir, name)
-                f.writeText(body)
-                0 to (if (!silent) "Saved to ${f.name} (${body.length} bytes)\n" else "")
-            } else if (outputFile != null) {
-                val f = if (outputFile.startsWith("/")) File(outputFile) else File(workingDir, outputFile)
-                f.parentFile?.mkdirs()
-                f.writeText(body)
-                0 to (if (!silent) "Saved to ${f.name} (${body.length} bytes)\n" else "")
+            if (outputFile != null) {
+                val targetFile = if (outputFile == "AUTO") {
+                    val pathName = url.path.substringAfterLast("/")
+                    val fn = if (pathName.isNotBlank()) pathName else "index.html"
+                    File(workingDir, fn)
+                } else {
+                    if (outputFile.startsWith("/")) File(outputFile) else File(workingDir, outputFile)
+                }
+                targetFile.writeBytes(bytes)
+                0 to (if (!silent) "  % Total    % Received % Xferd\r\n100 ${bytes.size}  100 ${bytes.size} -> ${targetFile.name}\r\n" else "")
             } else {
-                0 to body + "\n"
+                0 to String(bytes, Charsets.UTF_8)
             }
         } catch (e: Exception) {
             1 to "curl: (6) Could not resolve host: ${e.message}\n"
+        }
+    }
+
+    fun executeZip(args: List<String>, workingDir: File): Pair<Int, String> {
+        val files = args.filter { !it.startsWith("-") }
+        if (files.size < 2) {
+            return 1 to "usage: zip archive.zip file1 [file2...]\n"
+        }
+        val zipName = files[0]
+        val zipFile = if (zipName.startsWith("/")) File(zipName) else File(workingDir, zipName)
+        val targets = files.drop(1)
+
+        return try {
+            FileOutputStream(zipFile).use { fos ->
+                java.util.zip.ZipOutputStream(fos).use { zos ->
+                    for (t in targets) {
+                        val f = if (t.startsWith("/")) File(t) else File(workingDir, t)
+                        if (f.exists() && f.isFile) {
+                            zos.putNextEntry(java.util.zip.ZipEntry(f.name))
+                            f.inputStream().use { it.copyTo(zos) }
+                            zos.closeEntry()
+                        }
+                    }
+                }
+            }
+            0 to "  adding files to '$zipName'\n"
+        } catch (e: Exception) {
+            1 to "zip error: ${e.message}\n"
+        }
+    }
+
+    fun executeUnzip(args: List<String>, workingDir: File): Pair<Int, String> {
+        val files = args.filter { !it.startsWith("-") }
+        if (files.isEmpty()) {
+            return 1 to "usage: unzip archive.zip\n"
+        }
+        val zipName = files[0]
+        val zipFile = if (zipName.startsWith("/")) File(zipName) else File(workingDir, zipName)
+        if (!zipFile.exists()) {
+            return 1 to "unzip: cannot find or open $zipName\n"
+        }
+
+        return try {
+            ZipFile(zipFile).use { zf ->
+                val entries = zf.entries()
+                while (entries.hasMoreElements()) {
+                    val entry = entries.nextElement()
+                    val outFile = File(workingDir, entry.name)
+                    if (entry.isDirectory) {
+                        outFile.mkdirs()
+                    } else {
+                        outFile.parentFile?.mkdirs()
+                        zf.getInputStream(entry).use { input ->
+                            outFile.outputStream().use { output -> input.copyTo(output) }
+                        }
+                    }
+                }
+            }
+            0 to "Archive:  $zipName\n  extracted successfully.\n"
+        } catch (e: Exception) {
+            1 to "unzip error: ${e.message}\n"
         }
     }
 }
