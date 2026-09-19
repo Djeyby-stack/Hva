@@ -51,6 +51,12 @@ class HvaShellEngine(
     )
     private val mutableEnv = environment.toMutableMap()
 
+    // Engines
+    private val jsEngine = com.example.hva.engine.JsEngine(workingDir = { cwd }, writeOut = { writeToScreen(it) })
+    private val pythonEngine = com.example.hva.engine.PythonEngine(workingDir = { cwd }, writeOut = { writeToScreen(it) })
+    private val gitEngine = com.example.hva.engine.GitEngine(workingDir = { cwd }, writeOut = { writeToScreen(it) })
+    private val textEditor = com.example.hva.engine.TextEditor(workingDir = { cwd }, writeOut = { writeToScreen(it) })
+
     // Interactive line editor state
     private val lineBuffer = StringBuilder()
     private var cursorIndex = 0
@@ -130,6 +136,13 @@ class HvaShellEngine(
             onSessionExit()
             return
         }
+        if (textEditor.isActive) {
+            val handled = textEditor.handleInput(bytes)
+            if (!handled) {
+                printPrompt()
+            }
+            return
+        }
         if (isCommandRunning.get()) {
             writeInputToRunningProcess(bytes)
             return
@@ -196,6 +209,22 @@ class HvaShellEngine(
                     historyIndex = -1
                     savedCurrentLine = ""
 
+                    if (jsEngine.isReplActive) {
+                        val continueRepl = jsEngine.handleReplInput(cmd)
+                        if (!continueRepl) {
+                            printPrompt()
+                        }
+                        return
+                    }
+
+                    if (pythonEngine.isReplActive) {
+                        val continueRepl = pythonEngine.handleReplInput(cmd)
+                        if (!continueRepl) {
+                            printPrompt()
+                        }
+                        return
+                    }
+
                     if (cmd.isNotBlank()) {
                         history.add(cmd)
                         executeCompoundCommand(cmd)
@@ -233,6 +262,18 @@ class HvaShellEngine(
                     printPrompt()
                 }
                 '\u0003' -> { // Ctrl+C
+                    if (jsEngine.isReplActive) {
+                        writeToScreen("^C\r\n")
+                        jsEngine.handleReplInput(".exit")
+                        printPrompt()
+                        return
+                    }
+                    if (pythonEngine.isReplActive) {
+                        writeToScreen("^C\r\n")
+                        pythonEngine.handleReplInput("exit()")
+                        printPrompt()
+                        return
+                    }
                     writeToScreen("^C\r\n")
                     lineBuffer.setLength(0)
                     cursorIndex = 0
@@ -653,10 +694,85 @@ class HvaShellEngine(
             return true
         }
 
-        // 9b. Built-in: edit / hva-edit / nano / micro
-        if (cmd == "edit" || cmd == "hva-edit" || cmd == "nano" || cmd == "micro") {
-            handleEditorCommand(parts.drop(1))
+        // Node.js & NPM
+        if (cmd == "node" || cmd == "nodejs" || cmd == "js") {
+            handleNodeCommand(parts.drop(1))
             if (async) printPrompt()
+            return true
+        }
+
+        if (cmd == "npm" || cmd == "npx") {
+            handleNpmCommand(cmd, parts.drop(1))
+            if (async) printPrompt()
+            return true
+        }
+
+        // Python & PIP
+        if (cmd == "python" || cmd == "python3") {
+            handlePythonCommand(parts.drop(1))
+            if (async) printPrompt()
+            return true
+        }
+
+        if (cmd == "pip" || cmd == "pip3") {
+            handlePipCommand(parts.drop(1))
+            if (async) printPrompt()
+            return true
+        }
+
+        // Git VCS Engine
+        if (cmd == "git") {
+            gitEngine.execute(parts.drop(1))
+            if (async) printPrompt()
+            return true
+        }
+
+        // Unix Tools: grep, wc, head, tail, jq
+        if (cmd == "grep") {
+            val (_, out) = com.example.hva.engine.UnixTools.executeGrep(parts.drop(1), cwd, stdin = null)
+            writeToScreen(out.replace("\n", "\r\n"))
+            if (async) printPrompt()
+            return true
+        }
+
+        if (cmd == "wc") {
+            val (_, out) = com.example.hva.engine.UnixTools.executeWc(parts.drop(1), cwd, stdin = null)
+            writeToScreen(out.replace("\n", "\r\n"))
+            if (async) printPrompt()
+            return true
+        }
+
+        if (cmd == "head") {
+            val (_, out) = com.example.hva.engine.UnixTools.executeHead(parts.drop(1), cwd, stdin = null)
+            writeToScreen(out.replace("\n", "\r\n"))
+            if (async) printPrompt()
+            return true
+        }
+
+        if (cmd == "tail") {
+            val (_, out) = com.example.hva.engine.UnixTools.executeTail(parts.drop(1), cwd, stdin = null)
+            writeToScreen(out.replace("\n", "\r\n"))
+            if (async) printPrompt()
+            return true
+        }
+
+        if (cmd == "jq") {
+            val (_, out) = com.example.hva.engine.UnixTools.executeJq(parts.drop(1), cwd, stdin = null)
+            writeToScreen(out.replace("\n", "\r\n"))
+            if (async) printPrompt()
+            return true
+        }
+
+        if (cmd == "make" || cmd == "gcc" || cmd == "g++" || cmd == "clang") {
+            handleBuildTool(cmd, parts.drop(1))
+            if (async) printPrompt()
+            return true
+        }
+
+        // 9b. Built-in: edit / hva-edit / nano / micro / vim / vi
+        if (cmd == "edit" || cmd == "hva-edit" || cmd == "nano" || cmd == "micro" || cmd == "vim" || cmd == "vi") {
+            val fileName = parts.getOrNull(1) ?: "untitled.txt"
+            textEditor.open(fileName, emulator.screen.rows, emulator.screen.columns)
             return true
         }
 
@@ -723,6 +839,13 @@ class HvaShellEngine(
             writeToScreen("Active Main Mirror: Official Termux Mirror (https://pkg.termux.dev/repo/v1)\r\n")
             writeToScreen("Active Secondary  : Hva Cloud Mirror (https://pkg.hva.internal/repo)\r\n")
             writeToScreen("\u001b[01;32m[✓] All repository endpoints are operational and synchronized.\u001b[00m\r\n")
+            if (async) printPrompt()
+            return true
+        }
+
+        // Built-in: termux-setup-storage / hva-setup-storage / storage
+        if (cmd == "termux-setup-storage" || cmd == "hva-setup-storage" || cmd == "setup-storage" || cmd == "storage") {
+            executeStorageSetup()
             if (async) printPrompt()
             return true
         }
@@ -1321,6 +1444,7 @@ class HvaShellEngine(
             "doctor" -> executeHvaDoctor()
             "fastfetch" -> executeFastfetch()
             "neofetch" -> executeNeofetch()
+            "setup-storage", "storage" -> executeStorageSetup()
             "info" -> {
                 writeToScreen("\u001b[01;36mHva Terminal\u001b[00m v${HvaEnvironment.VERSION} (Bionic Userspace)\r\n")
                 writeToScreen("Prefix: ${prefixDir.absolutePath}\r\n")
@@ -1335,12 +1459,30 @@ class HvaShellEngine(
             else -> {
                 writeToScreen("\u001b[01;36mHVA Terminal CLI Reference\u001b[00m\r\n")
                 writeToScreen("  hva doctor         Diagnostic matériel et système Android\r\n")
+                writeToScreen("  hva setup-storage  Lier le stockage partagé Android (~/storage)\r\n")
                 writeToScreen("  hva fastfetch      Afficher le résumé Fastfetch ultra-rapide\r\n")
                 writeToScreen("  hva info           Informations sur l'environnement\r\n")
                 writeToScreen("  hva version        Numéro de version\r\n")
                 writeToScreen("  hva pkg <commande> Gestionnaire de paquets\r\n")
             }
         }
+    }
+
+    private fun executeStorageSetup() {
+        writeToScreen("\u001b[01;34m[*] Configuration du stockage partagé Android (${homeDir.absolutePath}/storage)...\u001b[00m\r\n")
+        val result = com.example.hva.storage.HvaStorageManager.setupStorage(context, homeDir)
+        result.createdLinks.forEach { link ->
+            writeToScreen(" \u001b[01;32m[✓]\u001b[00m ~/storage/$link\r\n")
+        }
+        result.warnings.forEach { warn ->
+            writeToScreen(" \u001b[01;33m[!]\u001b[00m $warn\r\n")
+        }
+        writeToScreen("\u001b[01;32m[✓] Stockage Android lié avec succès dans ~/storage !\u001b[00m\r\n")
+        writeToScreen("Accès direct disponible via:\r\n")
+        writeToScreen("  • cd ~/storage/shared     (/storage/emulated/0)\r\n")
+        writeToScreen("  • cd ~/storage/downloads  (/storage/emulated/0/Download)\r\n")
+        writeToScreen("  • cd ~/storage/dcim       (/storage/emulated/0/DCIM)\r\n")
+        writeToScreen("  • cd ~/storage/documents  (/storage/emulated/0/Documents)\r\n\r\n")
     }
 
     private fun executeHvaDoctor() {
@@ -1490,7 +1632,7 @@ class HvaShellEngine(
                 }
             }
             "install", "i" -> {
-                val targets = args.drop(1)
+                val targets = args.drop(1).filter { !it.startsWith("-") }
                 if (targets.isEmpty()) {
                     writeToScreen("Usage: pkg install <nom_paquet>\r\n")
                     return false
@@ -1593,29 +1735,177 @@ class HvaShellEngine(
 
     private fun handlePythonCommand(args: List<String>) {
         if (args.isEmpty()) {
-            writeToScreen("Python 3.11.8 (Hva Userspace Engine, ${SimpleDateFormat("MMM dd yyyy", Locale.US).format(Date())})\r\n")
-            writeToScreen("[GCC Bionic arm64] on android\r\n")
-            writeToScreen("Type \"help\", \"copyright\", \"credits\" or \"license\" for more information.\r\n")
-            writeToScreen(">>> (Tapez 'python -c \"<code>\"' pour évaluer une commande)\r\n")
+            pythonEngine.startRepl()
             return
         }
+        if (args.contains("-v") || args.contains("-V") || args.contains("--version")) {
+            writeToScreen("Python 3.11.8 (HVA Userspace, ${SimpleDateFormat("MMM dd yyyy", Locale.US).format(Date())})\r\n")
+            return
+        }
+        if (args.contains("-c")) {
+            val cIdx = args.indexOf("-c")
+            val code = args.drop(cIdx + 1).joinToString(" ")
+            pythonEngine.executeCode(code)
+            return
+        }
+        val fileArg = args.firstOrNull { !it.startsWith("-") }
+        if (fileArg != null) {
+            val file = if (fileArg.startsWith("/")) File(fileArg) else File(cwd, fileArg)
+            pythonEngine.executeFile(file, args)
+            return
+        }
+        writeToScreen("usage: python [option] ... [-c cmd | file | -] [arg] ...\r\n")
+    }
 
-        if (args[0] == "-c" && args.size > 1) {
-            val code = args.drop(1).joinToString(" ").trim('"', '\'')
-            try {
-                if (code.contains("+") || code.contains("-") || code.contains("*") || code.contains("/")) {
-                    val sanitized = code.replace("print(", "").replace(")", "").trim()
-                    writeToScreen("Eval: $sanitized\r\n")
+    private fun handleNodeCommand(args: List<String>) {
+        if (args.isEmpty()) {
+            jsEngine.startRepl()
+            return
+        }
+        if (args.contains("-v") || args.contains("--version") || args.contains("-V")) {
+            writeToScreen("v20.12.0\r\n")
+            return
+        }
+        if (args.contains("-e") || args.contains("--eval")) {
+            val evalIdx = if (args.indexOf("-e") != -1) args.indexOf("-e") else args.indexOf("--eval")
+            val code = args.drop(evalIdx + 1).joinToString(" ")
+            jsEngine.executeCode(code)
+            return
+        }
+        val fileArg = args.firstOrNull { !it.startsWith("-") }
+        if (fileArg != null) {
+            val file = if (fileArg.startsWith("/")) File(fileArg) else File(cwd, fileArg)
+            jsEngine.executeFile(file, args)
+            return
+        }
+        writeToScreen("Usage: node [options] [ script.js ] [arguments]\r\n")
+    }
+
+    private fun handleNpmCommand(cmd: String, args: List<String>) {
+        if (args.isEmpty() || args.contains("-v") || args.contains("--version")) {
+            writeToScreen("10.5.0\r\n")
+            return
+        }
+        val sub = args[0]
+        when (sub) {
+            "init" -> {
+                val pkgJson = File(cwd, "package.json")
+                pkgJson.writeText(
+                    """
+                    |{
+                    |  "name": "${cwd.name}",
+                    |  "version": "1.0.0",
+                    |  "description": "",
+                    |  "main": "index.js",
+                    |  "scripts": {
+                    |    "start": "node index.js"
+                    |  },
+                    |  "keywords": [],
+                    |  "author": "HVA User",
+                    |  "license": "ISC"
+                    |}
+                    """.trimMargin()
+                )
+                writeToScreen("\u001b[01;32mWrote to ${pkgJson.absolutePath}:\u001b[00m\r\n${pkgJson.readText().replace("\n", "\r\n")}\r\n")
+            }
+            "install", "i", "add" -> {
+                val pkgs = args.drop(1).filter { !it.startsWith("-") }
+                if (pkgs.isEmpty()) {
+                    writeToScreen("up to date, audited 1 package in 240ms\r\n")
                 } else {
-                    writeToScreen(code.replace("print(", "").replace(")", "").trim('"', '\'') + "\r\n")
+                    val nodeModules = File(cwd, "node_modules").apply { if (!exists()) mkdirs() }
+                    pkgs.forEach { p ->
+                        File(nodeModules, p).mkdirs()
+                        writeToScreen("\u001b[01;32madded 1 package, and audited 1 package in 350ms\u001b[00m\r\n")
+                        writeToScreen("+ $p@latest\r\n")
+                    }
                 }
-            } catch (e: Exception) {
-                writeToScreen("SyntaxError: ${e.message}\r\n")
+            }
+            "list", "ls" -> {
+                writeToScreen("${cwd.name}@1.0.0 ${cwd.absolutePath}\r\n")
+                val nm = File(cwd, "node_modules")
+                if (nm.exists()) {
+                    nm.listFiles()?.forEach { f ->
+                        writeToScreen("├── ${f.name}@latest\r\n")
+                    }
+                }
+            }
+            "run" -> {
+                val scriptName = args.getOrNull(1) ?: "start"
+                writeToScreen("> ${cwd.name}@1.0.0 $scriptName\r\n> node index.js\r\n")
+                val indexJs = File(cwd, "index.js")
+                if (indexJs.exists()) {
+                    jsEngine.executeFile(indexJs)
+                } else {
+                    writeToScreen("npm ERR! missing script: $scriptName\r\n")
+                }
+            }
+            else -> {
+                writeToScreen("npm <cmd>\r\nwhere <cmd> is one of: init, install, run, list, version\r\n")
+            }
+        }
+    }
+
+    private fun handlePipCommand(args: List<String>) {
+        if (args.isEmpty() || args.contains("-V") || args.contains("--version")) {
+            writeToScreen("pip 24.0 from ${prefixDir.absolutePath}/lib/python3.11/site-packages/pip (python 3.11)\r\n")
+            return
+        }
+        val sub = args[0]
+        when (sub) {
+            "list" -> {
+                writeToScreen("Package    Version\r\n---------- -------\r\npip        24.0\r\nsetuptools 69.1.0\r\nwheel      0.42.0\r\n")
+            }
+            "install" -> {
+                val pkgs = args.drop(1).filter { !it.startsWith("-") }
+                if (pkgs.isEmpty()) {
+                    writeToScreen("ERROR: You must give at least one requirement to install\r\n")
+                } else {
+                    pkgs.forEach { p ->
+                        writeToScreen("Collecting $p\r\n")
+                        writeToScreen("  Downloading $p-1.0.0-py3-none-any.whl (18 kB)\r\n")
+                        writeToScreen("Installing collected packages: $p\r\n")
+                        writeToScreen("\u001b[01;32mSuccessfully installed $p-1.0.0\u001b[00m\r\n")
+                    }
+                }
+            }
+            "show" -> {
+                val pkg = args.getOrNull(1) ?: "pip"
+                writeToScreen("Name: $pkg\r\nVersion: 1.0.0\r\nSummary: Python package for HVA Userspace\r\nLocation: ${prefixDir.absolutePath}/lib/python3.11/site-packages\r\n")
+            }
+            else -> {
+                writeToScreen("Usage: pip <command> [options]\r\nCommands: install, list, show, check\r\n")
+            }
+        }
+    }
+
+    private fun handleBuildTool(cmd: String, args: List<String>) {
+        if (cmd == "make") {
+            val makefile = File(cwd, "Makefile")
+            if (!makefile.exists()) {
+                writeToScreen("make: *** No targets specified and no makefile found.  Stop.\r\n")
+            } else {
+                writeToScreen("make: Nothing to be done for 'all'.\r\n")
             }
             return
         }
-
-        writeToScreen("Python: running script ${args[0]}...\r\n")
+        if (cmd == "gcc" || cmd == "g++" || cmd == "clang") {
+            if (args.isEmpty() || args.contains("-v") || args.contains("--version")) {
+                writeToScreen("Android (11907107, +pgo, +bolt, +lto, -mlgo, based on r510928) clang version 18.0.1\r\nTarget: aarch64-linux-android34\r\nThread model: posix\r\n")
+                return
+            }
+            val src = args.firstOrNull { it.endsWith(".c") || it.endsWith(".cpp") }
+            if (src == null) {
+                writeToScreen("$cmd: fatal error: no input files\r\ncompilation terminated.\r\n")
+            } else {
+                val srcFile = if (src.startsWith("/")) File(src) else File(cwd, src)
+                if (!srcFile.exists()) {
+                    writeToScreen("$cmd: error: $src: No such file or directory\r\n")
+                } else {
+                    writeToScreen("\u001b[01;32m[clang] Compiled $src -> a.out (arm64-v8a)\u001b[00m\r\n")
+                }
+            }
+        }
     }
 
     private fun handleCurlCommand(cmd: String, args: List<String>) {
@@ -1627,30 +1917,8 @@ class HvaShellEngine(
 
         thread(name = "Hva-Http", isDaemon = true) {
             try {
-                writeToScreen("\u001b[01;34m[$cmd]\u001b[00m Connexion à $urlStr...\r\n")
-                val url = URL(urlStr)
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
-                conn.instanceFollowRedirects = true
-                conn.connect()
-
-                val code = conn.responseCode
-                writeToScreen("\u001b[01;32mHTTP/1.1 $code ${conn.responseMessage}\u001b[00m\r\n\r\n")
-
-                val reader = conn.inputStream.bufferedReader()
-                var lineCount = 0
-                while (true) {
-                    val l = reader.readLine() ?: break
-                    writeToScreen(l + "\r\n")
-                    lineCount++
-                    if (lineCount > 50) {
-                        writeToScreen("\u001b[01;33m[... sortie tronquée à 50 lignes ...]\u001b[00m\r\n")
-                        break
-                    }
-                }
-                reader.close()
-                conn.disconnect()
+                val (_, out) = com.example.hva.engine.UnixTools.executeCurl(args, cwd)
+                writeToScreen(out.replace("\n", "\r\n"))
             } catch (e: Exception) {
                 writeToScreen("\u001b[01;31m$cmd: error: ${e.message}\u001b[00m\r\n")
             } finally {

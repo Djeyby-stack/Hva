@@ -28,6 +28,22 @@ class PackageManager(private val context: Context) {
 
     // Built-in fallback repository catalog
     private val defaultCatalog = mutableMapOf(
+        "build-essential" to PackageMeta(
+            name = "build-essential",
+            version = "12.10",
+            description = "Meta-package for compiling software (gcc, g++, make, clang, libc-dev)",
+            sizeBytes = 184000,
+            sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            files = listOf("bin/make", "bin/gcc", "bin/g++", "bin/clang")
+        ),
+        "make" to PackageMeta(
+            name = "make",
+            version = "4.4.1",
+            description = "GNU utility to direct compilation of programs",
+            sizeBytes = 45000,
+            sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            files = listOf("bin/make")
+        ),
         "coreutils" to PackageMeta(
             name = "coreutils",
             version = "9.4",

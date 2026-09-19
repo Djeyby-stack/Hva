@@ -78,7 +78,11 @@ jobs:
             touch .env
           fi
 
-      - name: Build Debug APK
+      - name: Run Impitoyable Unit Tests & Validation
+        run: |
+          gradle testDebugUnitTest --stacktrace --no-daemon --no-configuration-cache
+
+      - name: Build Standalone Debug APK
         run: |
           gradle assembleDebug --stacktrace --no-daemon --no-configuration-cache
 

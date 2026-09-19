@@ -60,6 +60,9 @@ object HvaEnvironment {
         val etc = File(prefix, "etc").apply { if (!exists()) mkdirs() }
         val tmp = getTempDir(context)
 
+        // Initialize storage symlinks
+        com.example.hva.storage.HvaStorageManager.setupStorage(context, home)
+
         // Install default .profile with HVA welcome message and prompt
         val profileFile = File(home, ".profile")
         profileFile.writeText(
@@ -255,5 +258,26 @@ object HvaEnvironment {
         )
         syncRepoScript.setExecutable(true, false)
         syncRepoScript.setReadable(true, false)
+
+        // Install termux-setup-storage / hva-setup-storage
+        val storageScript = File(bin, "termux-setup-storage")
+        storageScript.writeText(
+            """
+            |#!/system/bin/sh
+            |exec hva setup-storage "${'$'}@"
+            """.trimMargin()
+        )
+        storageScript.setExecutable(true, false)
+        storageScript.setReadable(true, false)
+
+        val hvaStorageScript = File(bin, "hva-setup-storage")
+        hvaStorageScript.writeText(
+            """
+            |#!/system/bin/sh
+            |exec hva setup-storage "${'$'}@"
+            """.trimMargin()
+        )
+        hvaStorageScript.setExecutable(true, false)
+        hvaStorageScript.setReadable(true, false)
     }
 }
